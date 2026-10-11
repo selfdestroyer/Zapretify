@@ -230,6 +230,17 @@ func runInstallation(req InstallRequest) {
 			continue
 		}
 
+		baseName := strings.ToLower(filepath.Base(cleanName))
+		// Filter out extraneous developer/doc files from installation folder
+		if strings.HasSuffix(baseName, ".md") ||
+			strings.EqualFold(baseName, "build_all.bat") ||
+			strings.EqualFold(baseName, "license") ||
+			strings.EqualFold(baseName, "test_results.txt") ||
+			strings.HasPrefix(baseName, "test_") ||
+			strings.HasPrefix(baseName, ".git") {
+			continue
+		}
+
 		destPath := filepath.Join(targetDir, cleanName)
 		pct := 15 + int(float64(i)/float64(totalFiles)*55)
 		updateProgress(pct, "Извлечение компонентов...", cleanName)
@@ -251,6 +262,11 @@ func runInstallation(req InstallRequest) {
 			_ = out.Close()
 		}
 		_ = rc.Close()
+	}
+
+	// Clean up any legacy or extraneous developer files from previous installs
+	for _, legacy := range []string{"ARCHITECTURE.md", "README.md", "LICENSE", "build_all.bat", "test_results.txt"} {
+		_ = os.Remove(filepath.Join(targetDir, legacy))
 	}
 
 	exePath := filepath.Join(targetDir, "Zapretify.exe")
@@ -296,37 +312,32 @@ func createShortcut(targetExe, lnkPath, workDir string) {
 }
 
 func createUninstaller(targetDir string) {
-	// Write uninstall.bat
+	exePath := filepath.Join(targetDir, "Zapretify.exe")
+
+	// Write helper uninstall.bat in the targetDir
 	uninstallBat := `@echo off
 chcp 65001 > nul
-title Удаление Zapretify
-echo [1/4] Завершение фоновых процессов Zapretify...
-taskkill /F /IM Zapretify.exe /T >nul 2>&1
-taskkill /F /IM winws.exe /T >nul 2>&1
-echo [2/4] Удаление системной службы zapret...
-sc stop zapret >nul 2>&1
-sc delete zapret >nul 2>&1
-echo [3/4] Очистка ярлыков и записей автозапуска...
-schtasks /delete /tn "Zapretify" /f >nul 2>&1
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v Zapretify /f >nul 2>&1
-reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Zapretify" /f >nul 2>&1
-del /f /q "%USERPROFILE%\Desktop\Zapretify.lnk" >nul 2>&1
-del /f /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Zapretify.lnk" >nul 2>&1
-echo [4/4] Удаление каталога программы...
-cd /d "%TEMP%"
-rmdir /s /q "%~dp0"
-echo Zapretify успешно удален!
-pause
+cd /d "%~dp0"
+start "" "Zapretify.exe" --uninstall
 `
 	uninstPath := filepath.Join(targetDir, "uninstall.bat")
 	_ = os.WriteFile(uninstPath, []byte(uninstallBat), 0755)
 
-	// Register in Add/Remove programs (HKCU)
-	uninstKey := `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Zapretify`
-	_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayName", "/t", "REG_SZ", "/d", "Zapretify", "/f").Run()
-	_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", "1.1.1", "/f").Run()
-	_ = exec.Command("reg", "add", uninstKey, "/v", "Publisher", "/t", "REG_SZ", "/d", "Flowseal & bol-van", "/f").Run()
-	_ = exec.Command("reg", "add", uninstKey, "/v", "InstallLocation", "/t", "REG_SZ", "/d", targetDir, "/f").Run()
-	_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayIcon", "/t", "REG_SZ", "/d", filepath.Join(targetDir, "assets", "icon.ico"), "/f").Run()
-	_ = exec.Command("reg", "add", uninstKey, "/v", "UninstallString", "/t", "REG_SZ", "/d", fmt.Sprintf("cmd.exe /c \"%s\"", uninstPath), "/f").Run()
+	// Register in Add/Remove programs (both HKCU and HKLM so Windows Settings always finds it)
+	uninstKeys := []string{
+		`HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Zapretify`,
+		`HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall\Zapretify`,
+	}
+	for _, uninstKey := range uninstKeys {
+		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayName", "/t", "REG_SZ", "/d", "Zapretify", "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", "1.1.1", "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "Publisher", "/t", "REG_SZ", "/d", "selfdestroyer", "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "InstallLocation", "/t", "REG_SZ", "/d", targetDir, "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayIcon", "/t", "REG_SZ", "/d", filepath.Join(targetDir, "assets", "icon.ico"), "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "UninstallString", "/t", "REG_SZ", "/d", fmt.Sprintf("\"%s\" --uninstall", exePath), "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "QuietUninstallString", "/t", "REG_SZ", "/d", fmt.Sprintf("\"%s\" --uninstall --quiet", exePath), "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "URLInfoAbout", "/t", "REG_SZ", "/d", "https://github.com/selfdestroyer/Zapretify", "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "NoModify", "/t", "REG_DWORD", "/d", "1", "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "NoRepair", "/t", "REG_DWORD", "/d", "1", "/f").Run()
+	}
 }

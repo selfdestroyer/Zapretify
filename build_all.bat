@@ -25,15 +25,13 @@ echo.
 :: 2. Create Portable ZIP Package
 echo [2/3] Создание Portable ZIP архива...
 if not exist "dist" mkdir dist
-powershell -NoProfile -Command "Compress-Archive -Path 'Zapretify.exe', 'bin', 'lists', 'assets', 'strategies.json', 'README.md', 'LICENSE', 'ARCHITECTURE.md' -DestinationPath 'dist\Zapretify-Portable-v1.1.1.zip' -Force"
+powershell -NoProfile -Command "Compress-Archive -Path 'Zapretify.exe', 'config.json', 'strategies.json', 'bin', 'lists', 'assets', 'README.md', 'LICENSE' -DestinationPath 'dist\Zapretify-Portable-v1.1.1.zip' -Force"
 echo [OK] dist\Zapretify-Portable-v1.1.1.zip создан!
 echo.
 
 :: 3. Build Windows Installer (Go + WebView2)
 echo [3/3] Сборка инсталлятора Zapretify-Setup...
-if exist "dist\Zapretify-Portable-v1.1.1.zip" (
-    copy /y "dist\Zapretify-Portable-v1.1.1.zip" "cmd\installer\payload.zip" >nul
-)
+powershell -NoProfile -Command "Compress-Archive -Path 'Zapretify.exe', 'config.json', 'strategies.json', 'bin', 'lists', 'assets' -DestinationPath 'cmd\installer\payload.zip' -Force"
 go build -ldflags="-s -w -H=windowsgui" -o dist\Zapretify-Setup-v1.1.1.exe .\cmd\installer
 if %errorlevel% equ 0 (
     echo [OK] dist\Zapretify-Setup-v1.1.1.exe успешно создан!

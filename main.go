@@ -29,7 +29,19 @@ func main() {
 	installSvc := flag.String("install-service", "", "Установить Zapret как системную службу Windows (требуются права администратора)")
 	removeSvc := flag.Bool("remove-service", false, "Удалить системную службу Zapret")
 	minimized := flag.Bool("minimized", false, "Запустить приложение свернутым в трей")
+	uninstallFlag := flag.Bool("uninstall", false, "Удалить Zapretify и все компоненты программы")
+	quietFlag := flag.Bool("quiet", false, "Тихий режим (без диалоговых окон)")
 	flag.Parse()
+
+	if *uninstallFlag {
+		exePath, err := os.Executable()
+		if err != nil {
+			exePath = "."
+		}
+		appDir := filepath.Dir(exePath)
+		handleUninstall(appDir, *quietFlag)
+		return
+	}
 
 	if runtime.GOOS == "windows" && !platform.IsAdmin() && !*minimized {
 		if err := platform.RunAsAdmin(os.Args[1:]...); err == nil {
