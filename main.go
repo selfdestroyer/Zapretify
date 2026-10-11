@@ -16,6 +16,7 @@ import (
 
 	"zapretify/core/config"
 	"zapretify/core/logger"
+	"zapretify/core/platform"
 	"zapretify/core/zapret"
 )
 
@@ -27,6 +28,12 @@ func main() {
 	removeSvc := flag.Bool("remove-service", false, "Удалить системную службу Zapret")
 	minimized := flag.Bool("minimized", false, "Запустить приложение свернутым в трей")
 	flag.Parse()
+
+	if runtime.GOOS == "windows" && !platform.IsAdmin() && !*minimized {
+		if err := platform.RunAsAdmin(os.Args[1:]...); err == nil {
+			os.Exit(0)
+		}
+	}
 
 	exePath, err := os.Executable()
 	if err != nil {

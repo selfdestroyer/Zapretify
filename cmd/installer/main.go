@@ -13,9 +13,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"zapretify/core/platform"
 )
 
 //go:embed frontend/*
@@ -72,6 +75,12 @@ func setComplete() {
 }
 
 func getDefaultInstallPath() string {
+	if !platform.IsAdmin() {
+		localApp := os.Getenv("LOCALAPPDATA")
+		if localApp != "" {
+			return filepath.Join(localApp, "Programs", "Zapretify")
+		}
+	}
 	pf := os.Getenv("ProgramFiles")
 	if pf != "" {
 		return filepath.Join(pf, "Zapretify")
@@ -84,6 +93,12 @@ func getDefaultInstallPath() string {
 }
 
 func main() {
+	if runtime.GOOS == "windows" && !platform.IsAdmin() {
+		if err := platform.RunAsAdmin(os.Args[1:]...); err == nil {
+			os.Exit(0)
+		}
+	}
+
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		fmt.Printf("Failed to bind local listener: %v\n", err)
@@ -192,7 +207,11 @@ func runInstallation(req InstallRequest) {
 	updateProgress(5, "Подготовка каталогов...", targetDir)
 
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		setError(fmt.Sprintf("Не удалось создать папку %s: %v", targetDir, err))
+		if strings.Contains(strings.ToLower(err.Error()), "access is denied") || strings.Contains(strings.ToLower(err.Error()), "отказано в доступе") {
+			setError(fmt.Sprintf("Недостаточно прав для создания папки \"%s\". Пожалуйста, запустите установщик от имени Администратора (ПКМ -> Запуск от имени администратора) или выберите другую папку для установки.", targetDir))
+		} else {
+			setError(fmt.Sprintf("Не удалось создать папку %s: %v", targetDir, err))
+		}
 		return
 	}
 
@@ -269,8 +288,8 @@ func runInstallation(req InstallRequest) {
 }
 
 func createShortcut(targetExe, lnkPath, workDir string) {
-	ps := fmt.Sprintf(`$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%s'); $s.TargetPath = '%s'; $s.WorkingDirectory = '%s'; $s.IconLocation = '%s,0'; $s.Save()`,
-		lnkPath, targetExe, workDir, targetExe)
+	ps := fmt.Sprintf(`$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%s'); $s.TargetPath = '%s'; $s.WorkingDirectory = '%s'; $s.IconLocation = '%s,0'; $s.Save(); try { $b = [System.IO.File]::ReadAllBytes('%s'); $b[0x15] = $b[0x15] -bor 0x20; [System.IO.File]::WriteAllBytes('%s', $b) } catch {}`,
+		lnkPath, targetExe, workDir, targetExe, lnkPath, lnkPath)
 	_ = exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command", ps).Run()
 }
 
