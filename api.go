@@ -223,4 +223,12 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/debug-report", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"report": app.GenerateDebugReport()})
 	})
+
+	mux.HandleFunc("/api/open-url", func(w http.ResponseWriter, r *http.Request) {
+		targetURL := r.URL.Query().Get("url")
+		if targetURL != "" {
+			openBrowser(targetURL)
+		}
+		writeJSON(w, map[string]string{"status": "ok"})
+	})
 }

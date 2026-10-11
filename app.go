@@ -83,11 +83,14 @@ func (a *App) GetZapretStatus() map[string]interface{} {
 	isRunning := svcState == "RUNNING" || procRunning
 
 	return map[string]interface{}{
-		"is_running":       isRunning,
-		"service_state":    svcState,
-		"service_strategy": stratName,
-		"proc_running":     procRunning,
-		"current_strategy": cfg.Zapret.Strategy,
+		"is_running":        isRunning,
+		"service_state":     svcState,
+		"service_strategy":  stratName,
+		"proc_running":      procRunning,
+		"current_strategy":  cfg.Zapret.Strategy,
+		"service_mode":      cfg.Zapret.ServiceMode,
+		"autostart_service": cfg.Zapret.AutostartService,
+		"autostart_app":     cfg.App.AutostartApp,
 	}
 }
 

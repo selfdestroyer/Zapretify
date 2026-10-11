@@ -1,8 +1,8 @@
 ; Inno Setup Script for Zapretify
 #define MyAppName "Zapretify"
-#define MyAppVersion "1.0.0"
-#define MyAppPublisher "Flowseal"
-#define MyAppURL "https://github.com/Flowseal"
+#define MyAppVersion "1.1.0"
+#define MyAppPublisher "selfdestroyer"
+#define MyAppURL "https://github.com/selfdestroyer/Zapretify"
 #define MyAppExeName "Zapretify.exe"
 
 [Setup]

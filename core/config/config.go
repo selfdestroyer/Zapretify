@@ -68,7 +68,7 @@ func DefaultConfig() *Config {
 			AutostartApp:     false,
 			StartMinimized:   false,
 			MinimizeToTray:   true,
-			GithubRepo:       "Flowseal/zapret-discord-youtube",
+			GithubRepo:       "selfdestroyer/Zapretify",
 			AutoUpdateApp:    true,
 			AutoUpdateAssets: true,
 		},
@@ -114,6 +114,9 @@ func Get() *Config {
 		appDir := filepath.Dir(exePath)
 		instance.configPath = filepath.Join(appDir, "config.json")
 		_ = instance.Load()
+		if instance.App.GithubRepo == "" || instance.App.GithubRepo == "Flowseal/zapret-discord-youtube" {
+			instance.App.GithubRepo = "selfdestroyer/Zapretify"
+		}
 	})
 	return instance
 }
