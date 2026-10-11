@@ -39,7 +39,7 @@ graph TD
         
         subgraph "Ядро 1: Zapret Manager"
             ZapretProc["Process Runner / Service Runner"]
-            StratReg["Реестр 22 стратегий Flowseal"]
+            StratReg["Реестр стратегий Flowseal"]
             Bench["AutoBenchmark движок"]
             Upstream["Flowseal Updater"]
         end
@@ -109,7 +109,7 @@ graph TD
 ### 3.3. Автоматический бенчмарк стратегий (`core/zapret/tester.go`)
 - **Алгоритм тестирования**:
   1. Временная остановка фоновой службы для обеспечения чистоты замеров.
-  2. Перебор 22 стратегий Flowseal:
+  2. Перебор доступных стратегий Flowseal:
      - Запуск `winws.exe` с тестируемыми флагами;
      - Прогрев драйвера WinDivert (400 мс);
      - Проверка контрольных доменов (YouTube GGC, Discord, Cloudflare) методами Ping, HTTPS handshake или DPI probe;

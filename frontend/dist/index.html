@@ -385,7 +385,7 @@
         <div class="card-title">Диагностика и авто-поиск лучшей стратегии</div>
         <div style="display: flex; gap: 8px; margin-top: 6px; margin-bottom: 12px; flex-wrap: wrap;">
           <button id="btn-bench" class="btn btn-secondary" onclick="runBenchmark()">Тест текущей</button>
-          <button id="btn-auto-bench" class="btn btn-success" onclick="startAutoBenchmark()">Проверить все 22 стратегии (Авто-поиск)</button>
+          <button id="btn-auto-bench" class="btn btn-success" onclick="startAutoBenchmark()">Проверить все стратегии (Авто-поиск)</button>
           <button id="btn-open-log" class="btn btn-secondary" onclick="openTestLog()">Лог теста (.txt)</button>
         </div>
         <p class="card-desc">Диагностика по алгоритмам blockcheck.sh: глубокий анализ DPI (детектирование TCP RST, packet drops, HTTP редиректов РКН) и замер задержки/доступности по HTTPS. Результаты сохраняются в файл test_results.txt в папке приложения.</p>
@@ -1051,7 +1051,7 @@
       pollStatus();
     }
 
-    // Auto-Benchmark (All 22 Strategies)
+    // Auto-Benchmark (All Strategies)
     let autoBenchTimer = null;
     let bestStrategyId = "";
     let bestStrategyName = "";
@@ -1068,7 +1068,7 @@
       document.getElementById('bench-auto-box').style.display = 'block';
       document.getElementById('bench-winner-banner').style.display = 'none';
       document.getElementById('bench-leaderboard-box').style.display = 'block';
-      document.getElementById('bench-progress-text').innerText = 'Запуск поочередного тестирования всех 22 стратегий (DPI + HTTPS)...';
+      document.getElementById('bench-progress-text').innerText = 'Запуск поочередного тестирования всех стратегий (DPI + HTTPS)...';
       showToast('Остановка активного Zapret перед авто-бенчмарком...');
       pollStatus();
 
