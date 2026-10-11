@@ -318,19 +318,19 @@ Zapretify/
 
 Проект **Zapretify** выражает глубокую признательность авторам базовых технологий:
 
-1. **[bol-van/zapret](https://github.com/bol-van/zapret)**  
+1. **[bol-van/zapret](https://github.com/bol-van/zapret)** *(ядро winws v72.9)*  
    *Автор: bol-van*  
-   Оригинальный комплекс `zapret`, утилита `winws.exe`, интеграция с сетевым драйвером `WinDivert` и реализация передовых методов десинхронизации пакетов.  
+   Оригинальный комплекс `zapret`, утилита `winws.exe` (v72.9), интеграция с сетевым драйвером `WinDivert` и реализация передовых методов десинхронизации пакетов.  
    Лицензия: [MIT License](https://github.com/bol-van/zapret/blob/master/docs/LICENSE.txt).
 
-2. **[Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube)**  
+2. **[Flowseal/zapret-discord-youtube](https://github.com/Flowseal/zapret-discord-youtube)** *(пакет стратегий v1.10.3)*  
    *Автор: Flowseal*  
-   Готовые стратегии для обхода замедления YouTube и Discord в РФ, базы доменов и IP-диапазонов, бинарные пэйлоады.  
+   Готовые стратегии для обхода замедления YouTube и Discord в РФ (актуальная база из 22 сценариев), списки доменов и IP-диапазонов, бинарные пэйлоады.  
    Лицензия: [MIT License](https://github.com/Flowseal/zapret-discord-youtube/blob/main/LICENSE).
 
-3. **[Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)**  
+3. **[Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)** *(протокол WebSocket over TLS)*  
    *Автор: Flowseal*  
-   Концепция и реализация проксирования протокола Telegram MTProto через защищенные соединения WebSocket (WSS) и CDN-сети.  
+   Концепция и реализация проксирования протокола Telegram MTProto через защищенные соединения WebSocket (WSS) и CDN-сети Cloudflare.  
    Лицензия: [MIT License](https://github.com/Flowseal/tg-ws-proxy/blob/main/LICENSE).
 
 Лицензия проекта Zapretify — **[MIT License](LICENSE)**.
