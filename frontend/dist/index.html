@@ -57,43 +57,70 @@
     
     /* Sidebar */
     .sidebar { width: 230px; background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 18px 12px; }
-    .brand { font-size: 18px; font-weight: 800; color: #fff; margin-bottom: 22px; padding: 0 8px; display: flex; align-items: center; justify-content: space-between; letter-spacing: -0.3px; }
-    .brand-title { display: flex; align-items: center; gap: 10px; }
+    .brand {
+      margin-bottom: 20px;
+      padding: 2px 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 9px;
+    }
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffffff;
+      letter-spacing: -0.3px;
+    }
+    .brand-logo {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      object-fit: contain;
+      box-shadow: 0 2px 8px rgba(6, 182, 212, 0.25);
+      flex-shrink: 0;
+    }
     .brand-badge {
       background: rgba(6, 182, 212, 0.12);
       color: var(--accent-cyan);
       font-size: 11px;
       font-weight: 700;
-      padding: 3px 8px;
-      border-radius: 6px;
+      padding: 4px 10px;
+      border-radius: 12px;
       border: 1px solid rgba(6, 182, 212, 0.25);
       font-family: 'SF Mono', monospace;
       cursor: pointer;
-      transition: all 0.25s ease;
+      transition: all 0.2s ease;
       outline: none;
       display: inline-flex;
       align-items: center;
       justify-content: center;
       text-decoration: none;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
     }
     .brand-badge:hover {
       background: rgba(6, 182, 212, 0.22);
       border-color: rgba(6, 182, 212, 0.55);
+      transform: translateY(-1px);
     }
     .brand-badge.badge-update-available {
-      background: rgba(255, 140, 0, 0.14) !important;
+      background: rgba(255, 140, 0, 0.16) !important;
       color: #ff9f43 !important;
-      border: 1px solid rgba(255, 159, 67, 0.6) !important;
+      border: 1px solid rgba(255, 159, 67, 0.65) !important;
       box-shadow: 0 0 12px rgba(255, 159, 67, 0.35);
-      text-shadow: 0 0 8px rgba(255, 159, 67, 0.6);
+      text-shadow: 0 0 8px rgba(255, 159, 67, 0.5);
       animation: neon-pulse 2.5s infinite ease-in-out;
       font-family: inherit;
       cursor: pointer;
     }
     .brand-badge.badge-update-available:hover {
-      background: rgba(255, 140, 0, 0.25) !important;
+      background: rgba(255, 140, 0, 0.3) !important;
       border-color: #ff9f43 !important;
-      box-shadow: 0 0 18px rgba(255, 159, 67, 0.6);
+      box-shadow: 0 0 18px rgba(255, 159, 67, 0.65);
+      transform: translateY(-1px);
     }
     @keyframes neon-pulse {
       0%, 100% {
@@ -105,6 +132,7 @@
         border-color: rgba(255, 159, 67, 0.9);
       }
     }
+    .nav-btn {
       display: flex;
       align-items: center;
       width: 100%;
