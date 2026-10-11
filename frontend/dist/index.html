@@ -379,9 +379,8 @@
             <h3 id="lbl-winner-title" style="font-size: 15px; font-weight: 800; color: #fbbf24; margin-bottom: 4px;">🏆 Лучшая стратегия найдена</h3>
             <p id="lbl-winner-desc" style="font-size: 12px; color: #d1d5db;">Обход подтвержден для всех сервисов с минимальной задержкой</p>
           </div>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-success" onclick="applyBestStrategy()">Применить сейчас</button>
-            <button class="btn btn-primary" onclick="installBestStrategyService()">Установить в службу</button>
+          <div>
+            <button class="btn btn-success" onclick="applyBestStrategy()">Применить лучшую стратегию</button>
           </div>
         </div>
 
@@ -421,17 +420,6 @@
         </div>
       </div>
 
-      <!-- Windows Service Controls -->
-      <div class="card">
-        <div class="card-title">
-          <span>Системная служба Windows (Бесшовный автозапуск)</span>
-        </div>
-        <p class="card-desc">Установка службы регистрирует Zapret в диспетчере служб Windows (services.msc). Программа будет работать в фоне при включении компьютера без всплывающих окон UAC.</p>
-        <div style="display: flex; gap: 10px;">
-          <button class="btn btn-primary" onclick="installService()">Установить как службу Windows</button>
-          <button class="btn btn-danger" onclick="removeService()">Удалить службу</button>
-        </div>
-      </div>
     </div>
 
     <!-- 3. TELEGRAM PROXY -->
@@ -465,8 +453,8 @@
       </div>
 
       <div class="card">
-        <div class="card-title">
-          <span>Задержка до Дата-Центров Telegram</span>
+        <div class="card-title">Задержка до Дата-Центров Telegram</div>
+        <div style="margin-top: 8px; margin-bottom: 12px;">
           <button class="btn btn-secondary" onclick="pingDCs()">Замерить пинг</button>
         </div>
         <table id="dc-table">
@@ -486,12 +474,7 @@
     <!-- 4. DOMAIN LISTS -->
     <div id="tab-lists" class="tab-content">
       <div class="card">
-        <div class="card-title">
-          <span>Редактор списков доменов и IP</span>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-primary" onclick="saveCurrentList()">Сохранить список</button>
-          </div>
-        </div>
+        <div class="card-title">Редактор списков доменов и IP</div>
         <p class="card-desc">Вы можете вручную добавлять или удалять сайты из списков фильтрации:</p>
 
         <div style="display: flex; gap: 10px; margin-bottom: 12px;">
@@ -502,6 +485,7 @@
             <option value="ipset-all.txt">ipset-all.txt (IP диапазоны)</option>
             <option value="ipset-exclude.txt">ipset-exclude.txt (Исключения IP)</option>
           </select>
+          <button class="btn btn-primary" onclick="saveCurrentList()">Сохранить список</button>
         </div>
 
         <!-- Quick Add Field -->
@@ -518,7 +502,7 @@
     <div id="tab-settings" class="tab-content">
       <div class="card">
         <div class="card-title">Автозапуск и службы</div>
-        <p class="card-desc">Настройте автоматический запуск компонентов при старте системы:</p>
+        <p class="card-desc">Настройте автоматический запуск компонентов при включении системы:</p>
 
         <label class="checkbox-row">
           <input type="checkbox" id="chk-autostart-app" onchange="toggleAutostartApp()">
@@ -526,7 +510,7 @@
         </label>
         <label class="checkbox-row">
           <input type="checkbox" id="chk-autostart-zapret" onchange="toggleAutostartZapret()">
-          Запускать Zapret автоматически (как системная служба Windows, 100% без UAC)
+          Запускать Zapret как системную службу Windows (фоновый автозапуск без окон UAC)
         </label>
         <label class="checkbox-row">
           <input type="checkbox" id="chk-autostart-tg" onchange="toggleAutostartTG()">
@@ -535,48 +519,43 @@
       </div>
 
       <div class="card">
-        <div class="card-title">
-          <span>Системная диагностика Windows</span>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-primary" onclick="copyDebugReport()">Скопировать отчет для разработчика</button>
-            <button class="btn btn-secondary" onclick="restartAdmin()">Запустить от имени Администратора</button>
-            <button class="btn btn-secondary" onclick="loadDiagnostics()">Обновить</button>
-          </div>
-        </div>
+        <div class="card-title">Системная диагностика Windows</div>
         <p class="card-desc">Проверка сетевых параметров Windows, конфликтов сторонних процессов и драйвера ядра WinDivert.</p>
         
-        <div id="diag-items" style="margin-top: 14px;"></div>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; margin-bottom: 14px;">
+          <button class="btn btn-primary" onclick="copyDebugReport()">Скопировать отчет для разработчика</button>
+          <button class="btn btn-secondary" onclick="restartAdmin()">Запустить от имени Администратора</button>
+          <button class="btn btn-secondary" onclick="loadDiagnostics()">Обновить</button>
+        </div>
+
+        <div id="diag-items" style="margin-top: 10px;"></div>
       </div>
 
       <div class="card">
-        <div class="card-title">
-          <span>Журнал событий и логи winws.exe</span>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-primary" onclick="copyDebugReport()">Скопировать отчет для разработчика</button>
-            <button class="btn btn-secondary" onclick="loadLogs()">Обновить</button>
-            <button class="btn btn-secondary" onclick="clearLogs()">Очистить</button>
-          </div>
-        </div>
+        <div class="card-title">Журнал событий и логи winws.exe</div>
         <p class="card-desc">Живой консольный вывод процессов Zapret, драйвера ядра WinDivert и системные события (файл <code>zapretify.log</code>):</p>
 
-        <div style="margin-top: 10px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; margin-bottom: 12px;">
+          <button class="btn btn-secondary" onclick="loadLogs()">Обновить</button>
+          <button class="btn btn-secondary" onclick="clearLogs()">Очистить</button>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
           <label class="checkbox-row" style="margin-bottom: 0;">
             <input type="checkbox" id="chk-auto-scroll" checked> Автопрокрутка вниз
           </label>
           <span id="log-count" style="font-size: 11px; color: var(--text-muted);">0 строк</span>
         </div>
 
-        <pre id="log-viewer" style="margin-top: 10px; background: #0b0e14; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: 'SF Mono', monospace; font-size: 12px; height: 380px; overflow-y: auto; color: #67e8f9; white-space: pre-wrap; line-height: 1.5;"></pre>
+        <pre id="log-viewer" style="margin-top: 6px; background: #0b0e14; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-family: 'SF Mono', monospace; font-size: 12px; height: 380px; overflow-y: auto; color: #67e8f9; white-space: pre-wrap; line-height: 1.5;"></pre>
       </div>
 
       <!-- Emergency Kill & Reset -->
       <div class="card">
-        <div class="card-title">
-          <span>Принудительное завершение и экстренный сброс</span>
-        </div>
+        <div class="card-title">Принудительное завершение и экстренный сброс</div>
         <p class="card-desc">Используйте эти действия при зависании фоновых процессов, занятых портах или необходимости мгновенно закрыть всё приложение со всеми службами:</p>
 
-        <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 10px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px;">
           <button class="btn btn-danger" style="background: #dc2626; border-color: #ef4444; font-weight: 700;" onclick="forceExitAll()">Принудительно закрыть всё приложение и зависимости</button>
           <button class="btn btn-secondary" onclick="forceKillZapret()">Завершить только Zapret (Kill winws.exe)</button>
           <button class="btn btn-secondary" onclick="resetDrivers()">Сброс служб и WinDivert</button>
@@ -587,7 +566,7 @@
         <div class="card-title">Система обновлений (Двухконтурная)</div>
         <p class="card-desc">Zapretify поддерживает раздельное быстрое обновление самого приложения и баз списков/стратегий:</p>
 
-        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; margin-bottom: 12px;">
           <button class="btn btn-primary" onclick="checkAppUpdate()">Проверить обновление приложения (GitHub)</button>
           <button class="btn btn-success" onclick="updateAssets()">Обновить базы и стратегии (Upstream Sync)</button>
         </div>
@@ -693,16 +672,28 @@
       if (!appConfig) return;
       const enable = document.getElementById('chk-autostart-zapret').checked;
       appConfig.zapret.autostart_service = enable;
+      appConfig.zapret.service_mode = enable;
       await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(appConfig)
       });
       if (enable) {
-        await installService();
+        const ok = await installService();
+        if (!ok) {
+          document.getElementById('chk-autostart-zapret').checked = false;
+          appConfig.zapret.autostart_service = false;
+          appConfig.zapret.service_mode = false;
+          await fetch('/api/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(appConfig)
+          });
+        }
       } else {
         await removeService();
       }
+      setTimeout(pollStatus, 500);
     }
 
     async function toggleAutostartTG() {
@@ -758,6 +749,12 @@
           } else {
             svcStateEl.innerHTML = '<span style="color: var(--text-muted);">Не запущена</span>';
           }
+        }
+
+        const chkZapret = document.getElementById('chk-autostart-zapret');
+        if (chkZapret && document.activeElement !== chkZapret) {
+          const isInstalled = data.zapret.service_state === 'RUNNING' || data.zapret.service_state === 'STOPPED';
+          chkZapret.checked = isInstalled || !!(appConfig && (appConfig.zapret.autostart_service || appConfig.zapret.service_mode));
         }
 
         // TG UI
