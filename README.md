@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="Zapretify Logo" width="140" style="border-radius: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.3);" />
+<img src="assets/logo.jpg" alt="Zapretify Logo" width="600" style="border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); max-width: 100%;" />
 
 # Zapretify
 
@@ -44,7 +44,7 @@
 ```mermaid
 graph TD
     subgraph Zapretify["Zapretify — Единая платформа на Go"]
-        subgraph Core1["ЯДРО 1: zapret (bol-van & Flowseal)"]
+        subgraph Core1["ЯДРО 1: zapret (bol-van и Flowseal)"]
             Z_Level["Уровень: L3 / L4 / L7 (Сетевой стек Windows)"]
             Z_Driver["Драйвер: WinDivert64.sys + winws.exe"]
             Z_Desync["Десинхронизация: Fake TLS, Multisplit, Fake QUIC, STUN"]
@@ -129,21 +129,21 @@ graph TD
         TGServers["Telegram Data Centers (DC1-DC5)"]
     end
 
-    Tray -->|Управление службами| EngineController
-    AppUI -->|Управление / Настройки| EngineController
+    Tray -->|"Управление службами"| EngineController
+    AppUI -->|"Управление и настройки"| EngineController
     EngineController --> ZapretSubsystem
     EngineController --> TGProxySubsystem
     EngineController --> Bench
     EngineController --> UpstreamSync
 
-    Browser -->|Обычный TCP/UDP трафик| WinDivert
-    WinDivert <-->|Захват и модификация пакетов| Winws
-    Winws -->|Десинхронизированные пакеты (DPI bypass)| YouTube
-    Winws -->|QUIC / STUN десинхронизация| Discord
+    Browser -->|"Обычный TCP/UDP трафик"| WinDivert
+    WinDivert ---|"Захват и модификация пакетов"| Winws
+    Winws -->|"Десинхронизация DPI"| YouTube
+    Winws -->|"QUIC и STUN десинхронизация"| Discord
 
-    Telegram -->|Локальный MTProto (127.0.0.1:1080)| TGProxySubsystem
-    TGProxySubsystem -->|WebSocket over TLS (Маскировка)| CFWorker
-    CFWorker -->|MTProto Forwarding| TGServers
+    Telegram -->|"Локальный MTProto"| TGProxySubsystem
+    TGProxySubsystem -->|"WebSocket over TLS"| CFWorker
+    CFWorker -->|"Форвардинг пакетов"| TGServers
 ```
 
 ### Принципы интеграции:

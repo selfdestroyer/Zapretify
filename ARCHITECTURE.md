@@ -63,7 +63,7 @@ graph TD
         TGDatacenters["Telegram DCs (DC1..DC5)"]
     end
 
-    UI <--> API
+    UI --- API
     Tray --> AppCtrl
     API --> AppCtrl
 
@@ -71,17 +71,17 @@ graph TD
     AppCtrl --> TCPListener
 
     %% Zapret Path
-    Browser -->|TCP 80/443| WinDivertDriver
-    Discord -->|TCP/UDP Голос и STUN| WinDivertDriver
-    WinDivertDriver <-->|Перехват & Десинхронизация| WinwsBin
-    WinwsBin -->|Фальшивые пакеты / Сплит TLS / Fake QUIC| YouTubeCDN
-    WinwsBin -->|STUN десинхронизация| DiscordVoice
+    Browser -->|"TCP 80/443"| WinDivertDriver
+    Discord -->|"TCP/UDP Голос и STUN"| WinDivertDriver
+    WinDivertDriver ---|"Перехват и десинхронизация"| WinwsBin
+    WinwsBin -->|"Фальшивые пакеты / Сплит TLS / Fake QUIC"| YouTubeCDN
+    WinwsBin -->|"STUN десинхронизация"| DiscordVoice
 
     %% Telegram WS Proxy Path
-    Telegram -->|Прямой MTProto TCP| TCPListener
+    Telegram -->|"Прямой MTProto TCP"| TCPListener
     TCPListener --> WSTunnel
-    WSTunnel -->|WSS over TLS (Маскировка под HTTPS)| CFEdge
-    CFEdge -->|Форвардинг пакетов| TGDatacenters
+    WSTunnel -->|"WSS over TLS (Маскировка HTTPS)"| CFEdge
+    CFEdge -->|"Форвардинг пакетов"| TGDatacenters
 ```
 
 ---
