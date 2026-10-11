@@ -269,8 +269,10 @@ func runInstallation(req InstallRequest) {
 
 	// 3. Autostart
 	if req.Autostart {
-		updateProgress(85, "Настройка параметров автозапуска...", "Реестр Windows")
-		_ = exec.Command("reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Zapretify", "/t", "REG_SZ", "/d", fmt.Sprintf("\"%s\" --minimized", exePath), "/f").Run()
+		updateProgress(85, "Настройка параметров автозапуска...", "Планировщик заданий Windows")
+		cmdTarget := fmt.Sprintf(`"%s" --minimized`, exePath)
+		_ = exec.Command("schtasks", "/create", "/tn", "Zapretify", "/tr", cmdTarget, "/sc", "onlogon", "/rl", "highest", "/f").Run()
+		_ = exec.Command("reg", "add", "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run", "/v", "Zapretify", "/t", "REG_SZ", "/d", cmdTarget, "/f").Run()
 	}
 
 	// 4. Create Uninstaller script & Add/Remove Programs entry
@@ -305,6 +307,7 @@ echo [2/4] Удаление системной службы zapret...
 sc stop zapret >nul 2>&1
 sc delete zapret >nul 2>&1
 echo [3/4] Очистка ярлыков и записей автозапуска...
+schtasks /delete /tn "Zapretify" /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v Zapretify /f >nul 2>&1
 reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Zapretify" /f >nul 2>&1
 del /f /q "%USERPROFILE%\Desktop\Zapretify.lnk" >nul 2>&1
