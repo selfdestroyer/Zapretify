@@ -132,6 +132,23 @@
         border-color: rgba(255, 159, 67, 0.9);
       }
     }
+    @keyframes card-highlight-glow {
+      0% {
+        box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.8), 0 4px 20px rgba(6, 182, 212, 0.35);
+        border-color: var(--accent-cyan);
+      }
+      50% {
+        box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.6), 0 4px 20px rgba(6, 182, 212, 0.25);
+        border-color: var(--accent-cyan);
+      }
+      100% {
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        border-color: var(--border);
+      }
+    }
+    .card-highlight {
+      animation: card-highlight-glow 2.5s ease-out;
+    }
     .nav-btn {
       display: flex;
       align-items: center;
@@ -251,7 +268,7 @@
     <button class="nav-btn" onclick="switchTab('zapret', this)">Zapret (YT / Discord)</button>
     <button class="nav-btn" onclick="switchTab('telegram', this)">Telegram Прокси</button>
     <button class="nav-btn" onclick="switchTab('lists', this)">Списки доменов</button>
-    <button class="nav-btn" onclick="switchTab('settings', this)">Настройки</button>
+    <button id="nav-btn-settings" class="nav-btn" onclick="switchTab('settings', this)">Настройки</button>
 
     <div class="sidebar-footer">
       <div style="margin-bottom: 6px;">
@@ -590,7 +607,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div id="card-updater" class="card">
         <div class="card-title">Система обновлений (Двухконтурная)</div>
         <p class="card-desc">Zapretify поддерживает раздельное быстрое обновление самого приложения и баз списков/стратегий:</p>
 
@@ -1385,17 +1402,31 @@
       }
     }
 
+    function scrollToUpdaterCard() {
+      const settingsNavBtn = document.getElementById('nav-btn-settings') || document.querySelectorAll('.nav-btn')[4];
+      switchTab('settings', settingsNavBtn);
+
+      const doScroll = () => {
+        const updaterCard = document.getElementById('card-updater');
+        if (updaterCard) {
+          updaterCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          updaterCard.classList.remove('card-highlight');
+          void updaterCard.offsetWidth;
+          updaterCard.classList.add('card-highlight');
+        }
+      };
+
+      setTimeout(doScroll, 80);
+    }
+
     async function onVersionBadgeClick() {
+      scrollToUpdaterCard();
       if (updateAvailable) {
         try {
           await fetch('/api/open-url?url=' + encodeURIComponent(latestReleaseURL));
         } catch (_) {}
         window.open(latestReleaseURL, '_blank');
       } else {
-        const navBtns = document.querySelectorAll('.nav-btn');
-        if (navBtns.length >= 5) {
-          switchTab('settings', navBtns[4]);
-        }
         checkAppUpdate();
       }
     }
