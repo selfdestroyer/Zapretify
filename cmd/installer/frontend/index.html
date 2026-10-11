@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Установка Zapretify</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --card: #121824;
+      --card-hover: #161e2e;
+      --border: #1c2436;
+      --border-focus: #00f2fe;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --primary: #00f2fe;
+      --primary-gradient: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
+      --success: #22c55e;
+      --success-gradient: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+      --danger: #ef4444;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      padding: 24px;
+    }
+
+    /* Header */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .logo-img {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0, 242, 254, 0.25);
+    }
+
+    .header-text h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header-text p {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(0, 242, 254, 0.12);
+      color: var(--primary);
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(0, 242, 254, 0.25);
+    }
+
+    /* Content Area */
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .step-view {
+      display: none;
+      flex-direction: column;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .step-view.active {
+      display: flex;
+    }
+
+    /* Form Fields */
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .path-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    .input-field {
+      flex: 1;
+      background: #080b10;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .input-field:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 2px rgba(0, 242, 254, 0.15);
+    }
+
+    .btn-secondary {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-secondary:hover {
+      background: var(--card-hover);
+      border-color: #2e3b52;
+    }
+
+    /* Options Box */
+    .options-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      background: #080b10;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      cursor: pointer;
+      position: relative;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .checkbox-row input[type="checkbox"]:checked {
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .checkbox-row input[type="checkbox"]:checked::after {
+      content: "";
+      position: absolute;
+      left: 5px;
+      top: 2px;
+      width: 5px;
+      height: 9px;
+      border: solid #0b0e14;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    .checkbox-label {
+      font-size: 13px;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .checkbox-sublabel {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 1px;
+    }
+
+    /* Footer Buttons */
+    .footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    .btn-primary {
+      background: var(--primary-gradient);
+      border: none;
+      color: #0b0e14;
+      padding: 10px 24px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(0, 242, 254, 0.25);
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 6px 20px rgba(0, 242, 254, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    /* Progress View */
+    .progress-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+      gap: 20px;
+    }
+
+    .progress-bar-wrapper {
+      width: 100%;
+      height: 8px;
+      background: #080b10;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--primary-gradient);
+      border-radius: 10px;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 12px rgba(0, 242, 254, 0.5);
+    }
+
+    .progress-status {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .progress-detail {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Complete View */
+    .complete-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      text-align: center;
+      gap: 16px;
+    }
+
+    .complete-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(34, 197, 94, 0.12);
+      border: 2px solid var(--success);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      color: var(--success);
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.25);
+    }
+
+    .complete-title {
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .complete-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      max-width: 400px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <img src="logo.png" alt="Zapretify" class="logo-img">
+    <div class="header-text">
+      <h1>Zapretify <span class="badge">v1.0.0 Setup</span></h1>
+      <p>Мастер установки • Симбиоз zapret и tg-ws-proxy</p>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- STEP 1: OPTIONS -->
+    <div id="step-options" class="step-view active">
+      <div>
+        <div class="section-title">Каталог установки</div>
+        <div class="path-row">
+          <input type="text" id="install-path" class="input-field" spellcheck="false" />
+          <button class="btn-secondary" onclick="browseFolder()">Обзор...</button>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-title">Параметры и ярлыки</div>
+        <div class="options-box">
+          <label class="checkbox-row">
+            <input type="checkbox" id="chk-desktop" checked />
+            <div class="checkbox-label">
+              <span>Создать ярлык на рабочем столе</span>
+              <span class="checkbox-sublabel">Быстрый доступ к панели управления</span>
+            </div>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="chk-startmenu" checked />
+            <div class="checkbox-label">
+              <span>Создать ярлык в меню «Пуск»</span>
+              <span class="checkbox-sublabel">Добавить в список установленных программ</span>
+            </div>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="chk-autostart" checked />
+            <div class="checkbox-label">
+              <span>Автозапуск при входе в систему</span>
+              <span class="checkbox-sublabel">Запуск свернутым в системный трей</span>
+            </div>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="chk-service" />
+            <div class="checkbox-label">
+              <span>Установить системную службу Zapret</span>
+              <span class="checkbox-sublabel">Автономный запуск в фоне до авторизации пользователя</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="footer">
+        <button class="btn-secondary" onclick="cancelSetup()">Отмена</button>
+        <button class="btn-primary" onclick="startInstall()">Установить Zapretify</button>
+      </div>
+    </div>
+
+    <!-- STEP 2: PROGRESS -->
+    <div id="step-progress" class="step-view">
+      <div class="progress-container">
+        <div class="progress-status" id="prog-status">Подготовка к установке...</div>
+        <div class="progress-bar-wrapper">
+          <div class="progress-bar" id="prog-bar"></div>
+        </div>
+        <div class="progress-detail" id="prog-detail">Инициализация файловой системы...</div>
+      </div>
+    </div>
+
+    <!-- STEP 3: COMPLETE -->
+    <div id="step-complete" class="step-view">
+      <div class="complete-container">
+        <div class="complete-icon">✓</div>
+        <div class="complete-title">Zapretify успешно установлен!</div>
+        <div class="complete-desc">
+          Все компоненты программы, базы и драйверы WinDivert готовы к работе.
+        </div>
+        <label class="checkbox-row" style="margin-top: 10px;">
+          <input type="checkbox" id="chk-launch" checked />
+          <div class="checkbox-label">
+            <span>Запустить Zapretify сейчас</span>
+          </div>
+        </label>
+      </div>
+
+      <div class="footer">
+        <button class="btn-primary" onclick="finishSetup()">Завершить</button>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    async function init() {
+      try {
+        const res = await fetch('/api/info');
+        const data = await res.json();
+        document.getElementById('install-path').value = data.default_path;
+      } catch (e) {
+        document.getElementById('install-path').value = 'C:\\Program Files\\Zapretify';
+      }
+    }
+
+    async function browseFolder() {
+      try {
+        const cur = document.getElementById('install-path').value;
+        const res = await fetch('/api/browse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ current_path: cur })
+        });
+        const data = await res.json();
+        if (data.selected_path) {
+          document.getElementById('install-path').value = data.selected_path;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function cancelSetup() {
+      fetch('/api/exit', { method: 'POST' });
+    }
+
+    async function startInstall() {
+      const path = document.getElementById('install-path').value.trim();
+      if (!path) {
+        alert('Укажите путь к папке установки!');
+        return;
+      }
+
+      // Switch to progress view
+      document.getElementById('step-options').classList.remove('active');
+      document.getElementById('step-progress').classList.add('active');
+
+      const payload = {
+        path: path,
+        desktop_shortcut: document.getElementById('chk-desktop').checked,
+        start_menu: document.getElementById('chk-startmenu').checked,
+        autostart: document.getElementById('chk-autostart').checked,
+        install_service: document.getElementById('chk-service').checked
+      };
+
+      // Start listening to progress
+      const pollTimer = setInterval(async () => {
+        try {
+          const res = await fetch('/api/progress');
+          const data = await res.json();
+          document.getElementById('prog-bar').style.width = data.percent + '%';
+          document.getElementById('prog-status').innerText = data.status || 'Установка компонентов...';
+          document.getElementById('prog-detail').innerText = data.detail || '';
+
+          if (data.complete) {
+            clearInterval(pollTimer);
+            setTimeout(() => {
+              document.getElementById('step-progress').classList.remove('active');
+              document.getElementById('step-complete').classList.add('active');
+            }, 500);
+          } else if (data.error) {
+            clearInterval(pollTimer);
+            alert('Ошибка установки: ' + data.error);
+            document.getElementById('step-progress').classList.remove('active');
+            document.getElementById('step-options').classList.add('active');
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }, 200);
+
+      try {
+        await fetch('/api/install', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+      } catch (e) {
+        console.error('Install start failed:', e);
+      }
+    }
+
+    async function finishSetup() {
+      const launch = document.getElementById('chk-launch').checked;
+      await fetch('/api/finish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ launch: launch })
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

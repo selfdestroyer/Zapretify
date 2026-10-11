@@ -1,0 +1,163 @@
+package config
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"sync"
+)
+
+type AppConfig struct {
+	Theme            string `json:"theme"`
+	Language         string `json:"language"`
+	AutostartApp     bool   `json:"autostart_app"`
+	StartMinimized   bool   `json:"start_minimized"`
+	MinimizeToTray   bool   `json:"minimize_to_tray"`
+	GithubRepo       string `json:"github_repo"`
+	AutoUpdateApp    bool   `json:"auto_update_app"`
+	AutoUpdateAssets bool   `json:"auto_update_assets"`
+}
+
+type ZapretConfig struct {
+	Enabled          bool   `json:"enabled"`
+	Strategy         string `json:"strategy"`
+	GameFilterMode   string `json:"game_filter_mode"` // "disabled", "udp", "tcp", "all"
+	GameFilterTCP    string `json:"game_filter_tcp"`  // e.g. "1024-65535"
+	GameFilterUDP    string `json:"game_filter_udp"`  // e.g. "1024-65535"
+	IPSetMode        string `json:"ipset_mode"`        // "loaded", "none", "any"
+	AutostartService bool   `json:"autostart_service"`
+	ServiceMode      bool   `json:"service_mode"`
+
+	// Legacy compatibility flags
+	GameFilter  bool `json:"game_filter"`
+	IPSetFilter bool `json:"ipset_filter"`
+}
+
+type TGProxyConfig struct {
+	Enabled        bool     `json:"enabled"`
+	Autostart      bool     `json:"autostart"`
+	Host           string   `json:"host"`
+	Port           int      `json:"port"`
+	Secret         string   `json:"secret"`
+	CFProxy        bool     `json:"cfproxy"`
+	H2             bool     `json:"h2"`
+	CFWorkerDomain []string `json:"cf_worker_domain"`
+	CFUserDomain   []string `json:"cf_user_domain"`
+	ForceTestDC    bool     `json:"force_test_dc"`
+}
+
+type Config struct {
+	App     AppConfig     `json:"app"`
+	Zapret  ZapretConfig  `json:"zapret"`
+	TGProxy TGProxyConfig `json:"tg_proxy"`
+
+	mu         sync.RWMutex `json:"-"`
+	configPath string       `json:"-"`
+}
+
+func DefaultConfig() *Config {
+	secretBytes := make([]byte, 16)
+	_, _ = rand.Read(secretBytes)
+
+	return &Config{
+		App: AppConfig{
+			Theme:            "dark",
+			Language:         "ru",
+			AutostartApp:     false,
+			StartMinimized:   false,
+			MinimizeToTray:   true,
+			GithubRepo:       "Flowseal/zapret-discord-youtube",
+			AutoUpdateApp:    true,
+			AutoUpdateAssets: true,
+		},
+		Zapret: ZapretConfig{
+			Enabled:          false,
+			Strategy:         "general",
+			GameFilterMode:   "disabled",
+			GameFilterTCP:    "1024-65535",
+			GameFilterUDP:    "1024-65535",
+			IPSetMode:        "none",
+			AutostartService: false,
+			ServiceMode:      false,
+			GameFilter:       false,
+			IPSetFilter:      false,
+		},
+		TGProxy: TGProxyConfig{
+			Enabled:        false,
+			Autostart:      false,
+			Host:           "127.0.0.1",
+			Port:           1443,
+			Secret:         hex.EncodeToString(secretBytes),
+			CFProxy:        true,
+			H2:             true,
+			CFWorkerDomain: []string{},
+			CFUserDomain:   []string{},
+			ForceTestDC:    false,
+		},
+	}
+}
+
+var (
+	instance *Config
+	once     sync.Once
+)
+
+func Get() *Config {
+	once.Do(func() {
+		instance = DefaultConfig()
+		exePath, err := os.Executable()
+		if err != nil {
+			exePath = "."
+		}
+		appDir := filepath.Dir(exePath)
+		instance.configPath = filepath.Join(appDir, "config.json")
+		_ = instance.Load()
+	})
+	return instance
+}
+
+func (c *Config) Load() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	data, err := os.ReadFile(c.configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return c.saveUnlocked()
+		}
+		return err
+	}
+
+	if err := json.Unmarshal(data, c); err != nil {
+		return err
+	}
+
+	if c.TGProxy.Secret == "" {
+		sec := make([]byte, 16)
+		_, _ = rand.Read(sec)
+		c.TGProxy.Secret = hex.EncodeToString(sec)
+		_ = c.saveUnlocked()
+	}
+
+	return nil
+}
+
+func (c *Config) Save() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.saveUnlocked()
+}
+
+func (c *Config) saveUnlocked() error {
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := c.configPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, c.configPath)
+}

@@ -1,0 +1,30 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+Zapretify-mac
+
+# Test binary and logs
+*.test
+*.out
+*.log
+test_results.txt
+*.tmp
+*.download
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Exceptions: keep bundled runtime binaries and release archives
+!dist/*.zip
+!dist/*.exe
+!bin/*.dll
+!bin/*.sys
+!bin/*.exe
+!bin/*.bin

@@ -1,0 +1,32 @@
+{
+  "app": {
+    "theme": "dark",
+    "language": "ru",
+    "autostart_app": false,
+    "start_minimized": false,
+    "minimize_to_tray": true,
+    "github_repo": "Flowseal/zapret-discord-youtube",
+    "auto_update_app": true,
+    "auto_update_assets": true
+  },
+  "zapret": {
+    "enabled": false,
+    "strategy": "general",
+    "game_filter": false,
+    "ipset_filter": false,
+    "autostart_service": false,
+    "service_mode": false
+  },
+  "tg_proxy": {
+    "enabled": false,
+    "autostart": false,
+    "host": "127.0.0.1",
+    "port": 1443,
+    "secret": "b48c4c7fc559caa2ec22dd91a2a562a7",
+    "cfproxy": true,
+    "h2": true,
+    "cf_worker_domain": [],
+    "cf_user_domain": [],
+    "force_test_dc": false
+  }
+}
