@@ -2,6 +2,7 @@ package zapret
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"zapretify/core/logger"
+	"zapretify/core/platform"
 )
 
 type TargetEndpoint struct {
@@ -370,12 +372,22 @@ type AutoBenchmarkStatus struct {
 var (
 	autoBenchStatus AutoBenchmarkStatus
 	autoBenchMu     sync.RWMutex
+	autoBenchCancel context.CancelFunc
 )
 
 func GetAutoBenchmarkStatus() AutoBenchmarkStatus {
 	autoBenchMu.RLock()
 	defer autoBenchMu.RUnlock()
 	return autoBenchStatus
+}
+
+func StopAutoBenchmark() {
+	autoBenchMu.Lock()
+	if autoBenchCancel != nil {
+		autoBenchCancel()
+		autoBenchCancel = nil
+	}
+	autoBenchMu.Unlock()
 }
 
 func formatMethod(method string) string {
@@ -569,6 +581,9 @@ func StartAutoBenchmark(binDir, listsDir, gameFilterMode, gameTCP, gameUDP, meth
 	strategies := GetRegistry().List()
 	logger.Log("[AutoBenchmark] Загружено %d стратегий Flowseal для тестирования", len(strategies))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	autoBenchCancel = cancel
+
 	autoBenchStatus = AutoBenchmarkStatus{
 		Running:         true,
 		IsRunning:       true,
@@ -588,10 +603,11 @@ func StartAutoBenchmark(binDir, listsDir, gameFilterMode, gameTCP, gameUDP, meth
 			autoBenchMu.Lock()
 			autoBenchStatus.Running = false
 			autoBenchStatus.IsRunning = false
+			autoBenchCancel = nil
 			currentStatus := autoBenchStatus
 			autoBenchMu.Unlock()
 			_ = GetRunner().Stop()
-			_ = exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T").Run()
+			_ = platform.RunHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
 
 			if appDir != "" && len(currentStatus.Leaderboard) > 0 {
 				reportPath := filepath.Join(appDir, "test_results.txt")
@@ -608,6 +624,13 @@ func StartAutoBenchmark(binDir, listsDir, gameFilterMode, gameTCP, gameUDP, meth
 		testTargets := GetTargetsByGroup(targetGroup)
 
 		for i, strat := range strategies {
+			select {
+			case <-ctx.Done():
+				logger.Log("[AutoBenchmark] Авто-бенчмарк отменен.")
+				return
+			default:
+			}
+
 			logger.Log("[AutoBenchmark] [%d/%d] Проверка: %s...", i+1, len(strategies), strat.Name)
 
 			autoBenchMu.Lock()

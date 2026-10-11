@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -254,8 +255,13 @@ func StartService() error {
 }
 
 func StopService() error {
-	_ = exec.Command("net", "stop", ServiceName).Run()
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T").Run()
+	cmd1 := exec.Command("net", "stop", ServiceName)
+	cmd1.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	_ = cmd1.Run()
+
+	cmd2 := exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T")
+	cmd2.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	_ = cmd2.Run()
 
 	hSCM, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err == nil {

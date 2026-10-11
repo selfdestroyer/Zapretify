@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
-	"syscall"
 	"time"
 
 	"zapretify/core/logger"
+	"zapretify/core/platform"
 )
 
 type ProcessRunner struct {
@@ -118,9 +118,7 @@ func (p *ProcessRunner) Start(
 		return err
 	}
 
-	if runtime.GOOS == "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	}
+	platform.HideWindow(cmd)
 
 	if err := cmd.Start(); err != nil {
 		p.emitLog(fmt.Sprintf("Ошибка запуска winws.exe: %v", err))
@@ -155,9 +153,7 @@ func (p *ProcessRunner) Stop() error {
 	defer p.mu.Unlock()
 
 	p.emitLog("Остановка Zapret...")
-	if runtime.GOOS == "windows" {
-		_ = exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T").Run()
-	}
+	_ = platform.RunHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
 	if p.cmd != nil && p.cmd.Process != nil {
 		_ = p.cmd.Process.Kill()
 		done := make(chan error, 1)

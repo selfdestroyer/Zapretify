@@ -297,6 +297,12 @@ func updateTrayTip() {
 func ExitGUIWindow() {
 	isQuitting = true
 	removeTrayIcon()
+	if mainHwnd != 0 {
+		procShowWindow.Call(mainHwnd, uintptr(SW_HIDE))
+	}
+	if globalApp != nil {
+		globalApp.Shutdown()
+	}
 	if globalWebview != nil {
 		globalWebview.Terminate()
 	}
@@ -393,14 +399,30 @@ func trayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 		case ID_TRAY_EXIT:
 			isQuitting = true
 			removeTrayIcon()
+			if hwnd != 0 {
+				procShowWindow.Call(hwnd, uintptr(SW_HIDE))
+			}
+			if globalApp != nil {
+				globalApp.Shutdown()
+			}
 			if globalWebview != nil {
 				globalWebview.Terminate()
 			}
 			procDestroyWindow.Call(hwnd)
 			return 0
 		}
+	case 0x0016: // WM_ENDSESSION
+		if wParam != 0 {
+			if globalApp != nil {
+				globalApp.Shutdown()
+			}
+		}
+		return 0
 	case WM_DESTROY:
 		removeTrayIcon()
+		if globalApp != nil {
+			globalApp.Shutdown()
+		}
 	}
 
 	r, _, _ := procCallWindowProcW.Call(origWndProc, hwnd, msg, wParam, lParam)

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"zapretify/core/config"
@@ -18,11 +19,16 @@ import (
 	"zapretify/core/zapret"
 )
 
+func runHidden(name string, args ...string) error {
+	return platform.RunHidden(name, args...)
+}
+
 type App struct {
-	ctx      context.Context
-	appDir   string
-	binDir   string
-	listsDir string
+	ctx          context.Context
+	appDir       string
+	binDir       string
+	listsDir     string
+	shutdownOnce sync.Once
 }
 
 func NewApp() *App {
@@ -111,7 +117,7 @@ func (a *App) StartZapret(strategyID string) error {
 	_ = zapret.SetIPSetMode(a.listsDir, cfg.Zapret.IPSetMode)
 
 	// Kill any stale winws processes before starting
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F").Run()
+	_ = runHidden("taskkill", "/IM", "winws.exe", "/F")
 
 	if cfg.Zapret.ServiceMode {
 		status, _, _ := zapret.GetServiceStatus()
@@ -161,7 +167,7 @@ func (a *App) StopZapret() error {
 	logger.Log("[Zapret] Запрос остановки...")
 	_ = zapret.GetRunner().Stop()
 	_ = zapret.StopService()
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F").Run()
+	_ = runHidden("taskkill", "/IM", "winws.exe", "/F")
 	time.Sleep(300 * time.Millisecond)
 	logger.Log("[Zapret] Остановка завершена.")
 	return nil
@@ -171,38 +177,54 @@ func (a *App) ForceKillZapret() error {
 	logger.Log("[Zapret] Аварийный сброс: Kill winws.exe...")
 	_ = zapret.GetRunner().Stop()
 	_ = zapret.StopService()
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T").Run()
+	_ = runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
 	time.Sleep(200 * time.Millisecond)
 	logger.Log("[Zapret] Все процессы winws.exe принудительно завершены.")
 	return nil
 }
 
+// Shutdown гарантированно и полностью останавливает Zapret, WinDivert, Telegram Proxy и все зависимости
+func (a *App) Shutdown() {
+	a.shutdownOnce.Do(func() {
+		logger.Log("[App] ===================================================")
+		logger.Log("[App] Завершение работы: остановка Zapret, tg-ws-proxy и всех зависимостей...")
+
+		// 1. Остановка авто-тестирования/бенчмарка (если активно)
+		zapret.StopAutoBenchmark()
+
+		// 2. Остановка runner-процесса Zapret (winws.exe)
+		logger.Log("[App] Остановка фонового процесса Zapret (winws.exe)...")
+		_ = zapret.GetRunner().Stop()
+
+		// 3. Остановка системной службы Windows zapret (если активна)
+		logger.Log("[App] Остановка системной службы Windows zapret...")
+		_ = zapret.StopService()
+
+		// 4. Остановка Telegram Proxy
+		logger.Log("[App] Остановка Telegram прокси...")
+		_ = a.StopTGProxy()
+
+		// 5. Завершение всех процессов winws.exe и выгрузка драйверов WinDivert
+		if runtime.GOOS == "windows" {
+			logger.Log("[App] Завершение процессов winws.exe и выгрузка драйвера WinDivert...")
+			_ = runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
+			_ = runHidden("net", "stop", "WinDivert")
+			_ = runHidden("net", "stop", "WinDivert14")
+		}
+
+		logger.Log("[App] Все службы, процессы Zapret и Telegram прокси успешно завершены.")
+		logger.Log("[App] ===================================================")
+	})
+}
+
 func (a *App) ForceExitAll() error {
-	logger.Log("[App] ===================================================")
-	logger.Log("[App] Принудительное завершение Zapretify и всех зависимостей...")
+	a.Shutdown()
 
-	// 1. Остановка runner и системных служб Zapret
-	_ = zapret.GetRunner().Stop()
-	_ = zapret.StopService()
-
-	// 2. Остановка Telegram Proxy
-	_ = a.StopTGProxy()
-
-	// 3. Аварийный kill всех процессов winws.exe и выгрузка драйвера WinDivert
-	if runtime.GOOS == "windows" {
-		_ = exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T").Run()
-		_ = exec.Command("net", "stop", "WinDivert").Run()
-		_ = exec.Command("net", "stop", "WinDivert14").Run()
-	}
-
-	logger.Log("[App] Все фоновые службы и процессы winws.exe остановлены.")
-	logger.Log("[App] Завершение работы приложения...")
-
-	// 4. Закрытие окон и гарантированное завершение процесса
+	// Закрытие окон и гарантированное завершение процесса
 	go func() {
-		time.Sleep(300 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		ExitGUIWindow()
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		os.Exit(0)
 	}()
 
@@ -213,10 +235,10 @@ func (a *App) ResetDrivers() error {
 	logger.Log("[Zapret] Полный сброс служб и драйвера WinDivert...")
 	_ = a.ForceKillZapret()
 	_ = zapret.RemoveService()
-	_ = exec.Command("net", "stop", "WinDivert").Run()
-	_ = exec.Command("sc", "delete", "WinDivert").Run()
-	_ = exec.Command("net", "stop", "WinDivert14").Run()
-	_ = exec.Command("sc", "delete", "WinDivert14").Run()
+	_ = runHidden("net", "stop", "WinDivert")
+	_ = runHidden("sc", "delete", "WinDivert")
+	_ = runHidden("net", "stop", "WinDivert14")
+	_ = runHidden("sc", "delete", "WinDivert14")
 	time.Sleep(400 * time.Millisecond)
 	logger.Log("[Zapret] Сброс WinDivert завершен.")
 	return nil
@@ -329,7 +351,7 @@ func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup
 	logger.Log("[Benchmark] Тест стратегии '%s' завершен (%d/%d доступно). Запрет остановлен, выбор за пользователем.",
 		stratName, res.SuccessCount, res.TotalCount)
 	_ = zapret.GetRunner().Stop()
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T").Run()
+	_ = runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
 	time.Sleep(200 * time.Millisecond)
 
 	return res

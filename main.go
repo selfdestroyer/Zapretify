@@ -10,8 +10,10 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"syscall"
 	"time"
 
 	"zapretify/core/config"
@@ -107,10 +109,25 @@ func main() {
 	guiURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	log.Printf("[Zapretify] GUI запущен на %s\n", guiURL)
 
-	// 4. Run Native Desktop Window
+	// 4. Graceful OS signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		logger.Log("[Zapretify] Получен сигнал завершения. Остановка всех процессов...")
+		app.Shutdown()
+		ExitGUIWindow()
+		os.Exit(0)
+	}()
+
+	// 5. Run Native Desktop Window
 	cfg := config.Get()
 	startInTray := *minimized || cfg.App.StartMinimized
 	runGUIWindow(guiURL, "Zapretify", 1060, 700, startInTray, app)
+
+	// Clean shutdown when GUI window closes
+	app.Shutdown()
+	logger.Log("[Zapretify] Приложение успешно закрыто.")
 }
 
 func openBrowser(url string) {
