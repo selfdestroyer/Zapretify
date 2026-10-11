@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const CurrentVersion = "1.1.0"
+const CurrentVersion = "1.1.1"
 
 type ReleaseAsset struct {
 	Name               string `json:"name"`

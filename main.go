@@ -46,7 +46,7 @@ func main() {
 	listsDir := filepath.Join(appDir, "lists")
 
 	logger.Init(filepath.Join(appDir, "zapretify.log"))
-	logger.Log("[Zapretify] Старт приложения v1.1.0 (%s/%s)", runtime.GOOS, runtime.GOARCH)
+	logger.Log("[Zapretify] Старт приложения v1.1.1 (%s/%s)", runtime.GOOS, runtime.GOARCH)
 
 	if *installSvc != "" {
 		stratID := *installSvc
