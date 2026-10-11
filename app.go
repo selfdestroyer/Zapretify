@@ -270,6 +270,8 @@ func (a *App) StartTGProxy() error {
 		cfg.TGProxy.CFProxy,
 		cfg.TGProxy.H2,
 		cfg.TGProxy.CFWorkerDomain,
+		cfg.TGProxy.CFUserDomain,
+		cfg.TGProxy.ForceTestDC,
 	)
 }
 

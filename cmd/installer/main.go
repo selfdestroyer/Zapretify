@@ -119,7 +119,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{
 			"default_path": getDefaultInstallPath(),
-			"version":      "1.1.1",
+			"version":      "1.2.0",
 		})
 	})
 
@@ -330,7 +330,7 @@ start "" "Zapretify.exe" --uninstall
 	}
 	for _, uninstKey := range uninstKeys {
 		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayName", "/t", "REG_SZ", "/d", "Zapretify", "/f").Run()
-		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", "1.1.1", "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", "1.2.0", "/f").Run()
 		_ = exec.Command("reg", "add", uninstKey, "/v", "Publisher", "/t", "REG_SZ", "/d", "selfdestroyer", "/f").Run()
 		_ = exec.Command("reg", "add", uninstKey, "/v", "InstallLocation", "/t", "REG_SZ", "/d", targetDir, "/f").Run()
 		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayIcon", "/t", "REG_SZ", "/d", filepath.Join(targetDir, "assets", "icon.ico"), "/f").Run()

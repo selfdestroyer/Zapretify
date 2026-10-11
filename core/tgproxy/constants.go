@@ -1,0 +1,72 @@
+package tgproxy
+
+import "time"
+
+const (
+	handshakeLen = 64
+	skipLen      = 8
+	prekeyLen    = 32
+	keyLen       = 32
+	ivLen        = 16
+	protoTagPos  = 56
+	dcIdxPos     = 60
+
+	protoAbridgedInt           = 0xEFEFEFEF
+	protoIntermediateInt       = 0xEEEEEEEE
+	protoPaddedIntermediateInt = 0xDDDDDDDD
+
+	wsPoolMaxAge              = 120 * time.Second
+	ipFailCooldown            = time.Hour
+	dcFailCooldown            = 60 * time.Second
+	frontingCooldown          = 30 * time.Minute
+	dcBlacklistTTL            = 10 * time.Minute
+	ioIdleTimeout             = 5 * time.Minute
+	idleWatchdogCheckInterval = 5 * time.Second
+	wsWriteTimeout            = 15 * time.Second
+	wsConnectTimeout          = 5 * time.Second
+	poolConnectTimeout        = 8 * time.Second
+	clientHandshakeTimeout    = 10 * time.Second
+	tcpDialTimeout            = 10 * time.Second
+	fakeTLSWriteTimeout       = 5 * time.Second
+	statsFlushBytes           = 256 * 1024
+	maxSplitterPacketBytes    = 8 * 1024 * 1024
+	acceptPollTimeout         = 1 * time.Second
+	acceptBackoffMin          = 5 * time.Millisecond
+	acceptBackoffMax          = 1 * time.Second
+	defaultMaxConns           = 256
+	defaultCFProxyDomain      = "pclead.co.uk"
+	cfProxyFailCooldown       = 1 * time.Minute
+)
+
+var (
+	protoTagAbridged     = []byte{0xef, 0xef, 0xef, 0xef}
+	protoTagIntermediate = []byte{0xee, 0xee, 0xee, 0xee}
+	protoTagSecure       = []byte{0xdd, 0xdd, 0xdd, 0xdd}
+
+	reservedFirst = map[byte]bool{0xef: true}
+	reservedStart = [][]byte{
+		[]byte("HEAD"),
+		[]byte("POST"),
+		[]byte("GET "),
+		{0xee, 0xee, 0xee, 0xee},
+		{0xdd, 0xdd, 0xdd, 0xdd},
+		{0x16, 0x03, 0x01, 0x02},
+	}
+
+	dcFallbackDefaults = map[int]string{
+		1:   "149.154.175.50",
+		2:   "149.154.167.51",
+		3:   "149.154.175.100",
+		4:   "149.154.167.91",
+		5:   "149.154.171.5",
+		203: "91.105.192.100",
+	}
+
+	dcOverrides = map[int]int{203: 2}
+
+	cfProxyDefaultDomainPool = []string{
+		defaultCFProxyDomain,
+	}
+
+	cfProxyKnownDCs = []int{1, 2, 3, 4, 5, 203}
+)
