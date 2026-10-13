@@ -60,6 +60,10 @@ func (a *App) startup(ctx context.Context) {
 	if cfg.Zapret.AutostartService && cfg.Zapret.ServiceMode {
 		_ = a.StartZapret(cfg.Zapret.Strategy)
 	}
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		TriggerTrayUpdate()
+	}()
 }
 
 // Config

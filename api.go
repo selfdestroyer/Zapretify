@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"zapretify/core/config"
 )
@@ -46,11 +47,19 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			TriggerTrayUpdate()
+		}()
 	})
 
 	mux.HandleFunc("/api/zapret/stop", func(w http.ResponseWriter, r *http.Request) {
 		_ = app.StopZapret()
 		writeJSON(w, map[string]string{"status": "ok"})
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			TriggerTrayUpdate()
+		}()
 	})
 
 	mux.HandleFunc("/api/zapret/install-service", func(w http.ResponseWriter, r *http.Request) {
@@ -144,11 +153,19 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
+		go func() {
+			time.Sleep(300 * time.Millisecond)
+			TriggerTrayUpdate()
+		}()
 	})
 
 	mux.HandleFunc("/api/tg/stop", func(w http.ResponseWriter, r *http.Request) {
 		_ = app.StopTGProxy()
 		writeJSON(w, map[string]string{"status": "ok"})
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			TriggerTrayUpdate()
+		}()
 	})
 
 	mux.HandleFunc("/api/tg/ping", func(w http.ResponseWriter, r *http.Request) {

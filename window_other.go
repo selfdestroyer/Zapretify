@@ -16,3 +16,6 @@ func ExitGUIWindow() {
 		globalApp.Shutdown()
 	}
 }
+
+func TriggerTrayUpdate() {}
+

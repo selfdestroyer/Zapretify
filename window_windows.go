@@ -3,7 +3,9 @@
 package main
 
 import (
+	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"github.com/jchv/go-webview2"
@@ -68,6 +70,7 @@ const (
 
 	WM_TRAYCALLBACK = WM_APP + 101
 
+	WM_MOUSEMOVE     = 0x0200
 	WM_LBUTTONUP     = 0x0202
 	WM_LBUTTONDBLCLK = 0x0203
 	WM_RBUTTONUP     = 0x0205
@@ -272,10 +275,33 @@ func removeTrayIcon() {
 	}
 }
 
+var (
+	trayTipMu     sync.Mutex
+	lastTipStatus string
+	lastTipCheck  time.Time
+)
+
+func TriggerTrayUpdate() {
+	updateTrayTipInternal(true)
+}
+
 func updateTrayTip() {
+	updateTrayTipInternal(false)
+}
+
+func updateTrayTipInternal(force bool) {
 	if trayIconData.HWnd == 0 || globalApp == nil {
 		return
 	}
+	trayTipMu.Lock()
+	defer trayTipMu.Unlock()
+
+	now := time.Now()
+	if !force && now.Sub(lastTipCheck) < 400*time.Millisecond && lastTipStatus != "" {
+		return
+	}
+	lastTipCheck = now
+
 	var status string
 	z := globalApp.IsZapretRunning()
 	tg := globalApp.GetTGProxyStatus()
@@ -288,7 +314,18 @@ func updateTrayTip() {
 	} else {
 		status = "Zapretify - Службы остановлены"
 	}
-	tipStr, _ := windows.UTF16FromString(status)
+
+	if status == lastTipStatus && !force {
+		return
+	}
+	lastTipStatus = status
+
+	tipStr, err := windows.UTF16FromString(status)
+	if err != nil {
+		return
+	}
+	var zeroTip [128]uint16
+	trayIconData.SzTip = zeroTip
 	copy(trayIconData.SzTip[:], tipStr)
 	trayIconData.UFlags = NIF_TIP
 	procShellNotifyIconW.Call(uintptr(NIM_MODIFY), uintptr(unsafe.Pointer(&trayIconData)))
@@ -321,11 +358,15 @@ func trayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 		}
 	case WM_TRAYCALLBACK:
 		switch uint32(lParam) {
+		case WM_MOUSEMOVE:
+			updateTrayTip()
+			return 0
 		case WM_LBUTTONUP, WM_LBUTTONDBLCLK:
 			procShowWindow.Call(hwnd, uintptr(SW_RESTORE))
 			procSetForegroundWindow.Call(hwnd)
 			return 0
 		case WM_RBUTTONUP:
+			updateTrayTipInternal(true)
 			var pt POINT
 			procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt)))
 			hMenu, _, _ := procCreatePopupMenu.Call()
@@ -380,7 +421,8 @@ func trayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 					} else {
 						_ = globalApp.StartZapret("")
 					}
-					updateTrayTip()
+					time.Sleep(300 * time.Millisecond)
+					TriggerTrayUpdate()
 				}()
 			}
 			return 0
@@ -392,7 +434,8 @@ func trayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 					} else {
 						_ = globalApp.StartTGProxy()
 					}
-					updateTrayTip()
+					time.Sleep(300 * time.Millisecond)
+					TriggerTrayUpdate()
 				}()
 			}
 			return 0
@@ -521,7 +564,17 @@ func runGUIWindow(url string, title string, width int, height int, startMinimize
 	// Add Tray Icon
 	addTrayIcon(hwnd, hIconSmall)
 	defer removeTrayIcon()
-	updateTrayTip()
+	TriggerTrayUpdate()
+
+	// Background ticker to keep tray tooltip continuously synchronized
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for !isQuitting {
+			<-ticker.C
+			updateTrayTip()
+		}
+	}()
 
 	// Subclass Window Proc for close-to-tray & tray messages
 	wndProcCallback := syscall.NewCallback(trayWndProc)
