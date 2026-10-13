@@ -36,7 +36,7 @@
       flex-direction: column;
       height: 100vh;
       overflow: hidden;
-      padding: 24px;
+      padding: 20px 24px;
     }
 
     /* Header */
@@ -44,16 +44,18 @@
       display: flex;
       align-items: center;
       gap: 16px;
-      margin-bottom: 20px;
-      padding-bottom: 16px;
+      margin-bottom: 14px;
+      padding-bottom: 14px;
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     .logo-img {
-      width: 52px;
-      height: 52px;
+      width: 48px;
+      height: 48px;
       border-radius: 12px;
       box-shadow: 0 4px 16px rgba(0, 242, 254, 0.25);
+      flex-shrink: 0;
     }
 
     .header-text h1 {
@@ -87,18 +89,43 @@
       flex: 1;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .step-view {
       display: none;
       flex-direction: column;
-      gap: 16px;
       height: 100%;
+      min-height: 0;
     }
 
     .step-view.active {
       display: flex;
+    }
+
+    .step-body {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 0;
+      padding-right: 4px;
+    }
+
+    .step-body::-webkit-scrollbar {
+      width: 6px;
+    }
+    .step-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .step-body::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+    .step-body::-webkit-scrollbar-thumb:hover {
+      background: #2e3b52;
     }
 
     /* Form Fields */
@@ -156,10 +183,10 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 14px 16px;
+      padding: 12px 14px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      gap: 10px;
     }
 
     .checkbox-row {
@@ -217,8 +244,10 @@
       display: flex;
       justify-content: flex-end;
       gap: 12px;
-      padding-top: 16px;
+      padding-top: 14px;
+      margin-top: auto;
       border-top: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     .btn-primary {
@@ -339,48 +368,50 @@
 
     <!-- STEP 1: OPTIONS -->
     <div id="step-options" class="step-view active">
-      <div>
-        <div class="section-title">Каталог установки</div>
-        <div class="path-row">
-          <input type="text" id="install-path" class="input-field" spellcheck="false" />
-          <button class="btn-secondary" onclick="browseFolder()">Обзор...</button>
+      <div class="step-body">
+        <div>
+          <div class="section-title">Каталог установки</div>
+          <div class="path-row">
+            <input type="text" id="install-path" class="input-field" spellcheck="false" />
+            <button class="btn-secondary" onclick="browseFolder()">Обзор...</button>
+          </div>
         </div>
-      </div>
 
-      <div>
-        <div class="section-title">Параметры и ярлыки</div>
-        <div class="options-box">
-          <label class="checkbox-row">
-            <input type="checkbox" id="chk-desktop" checked />
-            <div class="checkbox-label">
-              <span>Создать ярлык на рабочем столе</span>
-              <span class="checkbox-sublabel">Быстрый доступ к панели управления</span>
-            </div>
-          </label>
+        <div>
+          <div class="section-title">Параметры и ярлыки</div>
+          <div class="options-box">
+            <label class="checkbox-row">
+              <input type="checkbox" id="chk-desktop" checked />
+              <div class="checkbox-label">
+                <span>Создать ярлык на рабочем столе</span>
+                <span class="checkbox-sublabel">Быстрый доступ к панели управления</span>
+              </div>
+            </label>
 
-          <label class="checkbox-row">
-            <input type="checkbox" id="chk-startmenu" checked />
-            <div class="checkbox-label">
-              <span>Создать ярлык в меню «Пуск»</span>
-              <span class="checkbox-sublabel">Добавить в список установленных программ</span>
-            </div>
-          </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="chk-startmenu" checked />
+              <div class="checkbox-label">
+                <span>Создать ярлык в меню «Пуск»</span>
+                <span class="checkbox-sublabel">Добавить в список установленных программ</span>
+              </div>
+            </label>
 
-          <label class="checkbox-row">
-            <input type="checkbox" id="chk-autostart" checked />
-            <div class="checkbox-label">
-              <span>Автозапуск при входе в систему</span>
-              <span class="checkbox-sublabel">Запуск свернутым в системный трей</span>
-            </div>
-          </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="chk-autostart" checked />
+              <div class="checkbox-label">
+                <span>Автозапуск при входе в систему</span>
+                <span class="checkbox-sublabel">Запуск свернутым в системный трей</span>
+              </div>
+            </label>
 
-          <label class="checkbox-row">
-            <input type="checkbox" id="chk-service" />
-            <div class="checkbox-label">
-              <span>Установить системную службу Zapret</span>
-              <span class="checkbox-sublabel">Автономный запуск в фоне до авторизации пользователя</span>
-            </div>
-          </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="chk-service" />
+              <div class="checkbox-label">
+                <span>Установить системную службу Zapret</span>
+                <span class="checkbox-sublabel">Автономный запуск в фоне до авторизации пользователя</span>
+              </div>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -392,29 +423,33 @@
 
     <!-- STEP 2: PROGRESS -->
     <div id="step-progress" class="step-view">
-      <div class="progress-container">
-        <div class="progress-status" id="prog-status">Подготовка к установке...</div>
-        <div class="progress-bar-wrapper">
-          <div class="progress-bar" id="prog-bar"></div>
+      <div class="step-body" style="justify-content: center;">
+        <div class="progress-container">
+          <div class="progress-status" id="prog-status">Подготовка к установке...</div>
+          <div class="progress-bar-wrapper">
+            <div class="progress-bar" id="prog-bar"></div>
+          </div>
+          <div class="progress-detail" id="prog-detail">Инициализация файловой системы...</div>
         </div>
-        <div class="progress-detail" id="prog-detail">Инициализация файловой системы...</div>
       </div>
     </div>
 
     <!-- STEP 3: COMPLETE -->
     <div id="step-complete" class="step-view">
-      <div class="complete-container">
-        <div class="complete-icon">✓</div>
-        <div class="complete-title">Zapretify успешно установлен!</div>
-        <div class="complete-desc">
-          Все компоненты программы, базы и драйверы WinDivert готовы к работе.
-        </div>
-        <label class="checkbox-row" style="margin-top: 10px;">
-          <input type="checkbox" id="chk-launch" checked />
-          <div class="checkbox-label">
-            <span>Запустить Zapretify сейчас</span>
+      <div class="step-body" style="justify-content: center;">
+        <div class="complete-container">
+          <div class="complete-icon">✓</div>
+          <div class="complete-title">Zapretify успешно установлен!</div>
+          <div class="complete-desc">
+            Все компоненты программы, базы и драйверы WinDivert готовы к работе.
           </div>
-        </label>
+          <label class="checkbox-row" style="margin-top: 10px;">
+            <input type="checkbox" id="chk-launch" checked />
+            <div class="checkbox-label">
+              <span>Запустить Zapretify сейчас</span>
+            </div>
+          </label>
+        </div>
       </div>
 
       <div class="footer">

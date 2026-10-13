@@ -29,8 +29,8 @@ func runInstallerWindow(url string) {
 		AutoFocus: true,
 		WindowOptions: webview2.WindowOptions{
 			Title:  "Установка Zapretify",
-			Width:  660,
-			Height: 520,
+			Width:  720,
+			Height: 580,
 			IconId: 1,
 			Center: true,
 		},
@@ -57,7 +57,7 @@ func runInstallerWindow(url string) {
 			unsafe.Sizeof(darkMode),
 		)
 
-		w.SetSize(660, 520, webview2.HintFixed)
+		w.SetSize(720, 580, webview2.HintFixed)
 		procShowWindow.Call(hwnd, 1)
 		procSetForegroundWindow.Call(hwnd)
 	}
