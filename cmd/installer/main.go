@@ -33,6 +33,7 @@ type InstallRequest struct {
 	StartMenu       bool   `json:"start_menu"`
 	Autostart       bool   `json:"autostart"`
 	InstallService  bool   `json:"install_service"`
+	IsUpgrade       bool   `json:"is_upgrade"`
 }
 
 type ProgressState struct {
@@ -66,11 +67,15 @@ func setError(errMsg string) {
 	progressState.Error = errMsg
 }
 
-func setComplete() {
+func setComplete(isUpgrade bool) {
 	progressMu.Lock()
 	defer progressMu.Unlock()
 	progressState.Percent = 100
-	progressState.Status = "Установка успешно завершена"
+	if isUpgrade {
+		progressState.Status = "Обновление успешно завершено"
+	} else {
+		progressState.Status = "Установка успешно завершена"
+	}
 	progressState.Complete = true
 }
 
@@ -117,9 +122,19 @@ func main() {
 	// API Handlers
 	mux.HandleFunc("/api/info", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"default_path": getDefaultInstallPath(),
-			"version":      "1.2.1",
+		existing := detectExistingInstallation()
+		defaultPath := getDefaultInstallPath()
+		if existing.IsInstalled && existing.InstalledPath != "" {
+			defaultPath = existing.InstalledPath
+		}
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"default_path":      defaultPath,
+			"version":           "1.2.2",
+			"is_installed":      existing.IsInstalled,
+			"installed_version": existing.InstalledVersion,
+			"installed_path":    existing.InstalledPath,
+			"has_autostart":     existing.HasAutostart,
+			"has_service":       existing.HasService,
 		})
 	})
 
@@ -204,7 +219,16 @@ func main() {
 
 func runInstallation(req InstallRequest) {
 	targetDir := req.Path
-	updateProgress(5, "Подготовка каталогов...", targetDir)
+
+	// 0. Cleanly stop any running instances of Zapretify or its background services
+	updateProgress(5, "Остановка активных процессов...", "Завершение Zapretify и служб")
+	_ = exec.Command("taskkill", "/F", "/IM", "Zapretify.exe").Run()
+	_ = exec.Command("taskkill", "/F", "/IM", "winws.exe").Run()
+	_ = exec.Command("taskkill", "/F", "/IM", "tg-ws-proxy.exe").Run()
+	_ = exec.Command("net", "stop", "zapret").Run()
+	time.Sleep(300 * time.Millisecond)
+
+	updateProgress(10, "Подготовка каталогов...", targetDir)
 
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "access is denied") || strings.Contains(strings.ToLower(err.Error()), "отказано в доступе") {
@@ -242,6 +266,16 @@ func runInstallation(req InstallRequest) {
 		}
 
 		destPath := filepath.Join(targetDir, cleanName)
+
+		// Preserve user's existing config and custom lists on upgrade
+		if req.IsUpgrade {
+			if _, err := os.Stat(destPath); err == nil {
+				if strings.EqualFold(baseName, "config.json") || strings.EqualFold(baseName, "custom.txt") {
+					continue
+				}
+			}
+		}
+
 		pct := 15 + int(float64(i)/float64(totalFiles)*55)
 		updateProgress(pct, "Извлечение компонентов...", cleanName)
 
@@ -302,7 +336,7 @@ func runInstallation(req InstallRequest) {
 	}
 
 	time.Sleep(300 * time.Millisecond)
-	setComplete()
+	setComplete(req.IsUpgrade)
 }
 
 func createShortcut(targetExe, lnkPath, workDir string) {
@@ -330,7 +364,7 @@ start "" "Zapretify.exe" --uninstall
 	}
 	for _, uninstKey := range uninstKeys {
 		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayName", "/t", "REG_SZ", "/d", "Zapretify", "/f").Run()
-		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", "1.2.1", "/f").Run()
+		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayVersion", "/t", "REG_SZ", "/d", "1.2.2", "/f").Run()
 		_ = exec.Command("reg", "add", uninstKey, "/v", "Publisher", "/t", "REG_SZ", "/d", "selfdestroyer", "/f").Run()
 		_ = exec.Command("reg", "add", uninstKey, "/v", "InstallLocation", "/t", "REG_SZ", "/d", targetDir, "/f").Run()
 		_ = exec.Command("reg", "add", uninstKey, "/v", "DisplayIcon", "/t", "REG_SZ", "/d", filepath.Join(targetDir, "assets", "icon.ico"), "/f").Run()

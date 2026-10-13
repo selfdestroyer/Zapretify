@@ -582,6 +582,14 @@ func runGUIWindow(url string, title string, width int, height int, startMinimize
 
 	w.SetTitle(title)
 	w.SetSize(width, height, webview2.HintFixed)
+	w.Init(`
+		window.open = function(url) {
+			if (url) {
+				fetch('/api/open-url?url=' + encodeURIComponent(url)).catch(function(){});
+			}
+			return null;
+		};
+	`)
 	w.Navigate(url)
 
 	if startMinimized {

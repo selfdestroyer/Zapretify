@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -58,7 +57,7 @@ func main() {
 	listsDir := filepath.Join(appDir, "lists")
 
 	logger.Init(filepath.Join(appDir, "zapretify.log"))
-	logger.Log("[Zapretify] Старт приложения v1.2.1 (%s/%s)", runtime.GOOS, runtime.GOARCH)
+	logger.Log("[Zapretify] Старт приложения v1.2.2 (%s/%s)", runtime.GOOS, runtime.GOARCH)
 
 	if *installSvc != "" {
 		stratID := *installSvc
@@ -140,17 +139,4 @@ func main() {
 	// Clean shutdown when GUI window closes
 	app.Shutdown()
 	logger.Log("[Zapretify] Приложение успешно закрыто.")
-}
-
-func openBrowser(url string) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
-	case "darwin":
-		cmd = exec.Command("open", url)
-	default:
-		cmd = exec.Command("xdg-open", url)
-	}
-	_ = cmd.Start()
 }

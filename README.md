@@ -222,13 +222,14 @@ graph TD
 ## 📦 Установка и запуск
 
 ### Вариант 1: Portable-версия (без установки)
-1. Скачайте архив **`Zapretify-Portable-v1.2.1.zip`** из раздела [Releases](../../releases).
+1. Скачайте архив **`Zapretify-Portable-v1.2.2.zip`** из раздела [Releases](../../releases).
 2. Распакуйте архив в удобный каталог (например, `C:\Program Files\Zapretify` или `D:\Tools\Zapretify`).
 3. Запустите **`Zapretify.exe`** от имени администратора.
 
 ### Вариант 2: Установщик Windows (Setup.exe)
-1. Скачайте и запустите **`Zapretify-Setup-v1.2.1.exe`** из раздела [Releases](../../releases).
+1. Скачайте и запустите **`Zapretify-Setup-v1.2.2.exe`** из раздела [Releases](../../releases).
 2. Программа установки:
+   - Автоматически распознает уже установленную версию программы и предложит ее обновление с сохранением пользовательских настроек и списков;
    - Автоматически предложит оптимальный путь установки с возможностью выбора другой папки;
    - Создаст ярлыки на рабочем столе и в меню «Пуск»;
    - Настроит автозапуск в трей и системную службу Windows;
@@ -273,7 +274,7 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o Zapretify.e
 go build -ldflags="-s -w -H=windowsgui" -o Zapretify.exe .
 
 # Сборка инсталлятора (Setup.exe):
-GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o dist/Zapretify-Setup-v1.2.1.exe ./cmd/installer
+GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o dist/Zapretify-Setup-v1.2.2.exe ./cmd/installer
 ```
 
 ### Автоматическая сборка дистрибутива
@@ -281,7 +282,7 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o dist/Zapret
 ```cmd
 build_all.bat
 ```
-Скрипт скомпилирует `Zapretify.exe`, упакует портативный архив `dist/Zapretify-Portable-v1.2.1.zip` и автоматически собет инсталлятор `dist/Zapretify-Setup-v1.2.1.exe`.
+Скрипт скомпилирует `Zapretify.exe`, упакует портативный архив `dist/Zapretify-Portable-v1.2.2.zip` и автоматически собет инсталлятор `dist/Zapretify-Setup-v1.2.2.exe`.
 
 ---
 

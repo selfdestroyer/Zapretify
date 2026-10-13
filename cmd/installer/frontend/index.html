@@ -359,8 +359,8 @@
   <div class="header">
     <img src="logo.png" alt="Zapretify" class="logo-img">
     <div class="header-text">
-      <h1>Zapretify <span class="badge">v1.2.1 Setup</span></h1>
-      <p>Мастер установки • Симбиоз zapret и tg-ws-proxy</p>
+      <h1>Zapretify <span id="hdr-badge" class="badge">v1.2.2 Setup</span></h1>
+      <p id="hdr-subtitle">Мастер установки • Симбиоз zapret и tg-ws-proxy</p>
     </div>
   </div>
 
@@ -370,7 +370,7 @@
     <div id="step-options" class="step-view active">
       <div class="step-body">
         <div>
-          <div class="section-title">Каталог установки</div>
+          <div class="section-title" id="lbl-path-title">Каталог установки</div>
           <div class="path-row">
             <input type="text" id="install-path" class="input-field" spellcheck="false" />
             <button class="btn-secondary" onclick="browseFolder()">Обзор...</button>
@@ -417,7 +417,7 @@
 
       <div class="footer">
         <button class="btn-secondary" onclick="cancelSetup()">Отмена</button>
-        <button class="btn-primary" onclick="startInstall()">Установить Zapretify</button>
+        <button class="btn-primary" id="btn-start" onclick="startInstall()">Установить Zapretify</button>
       </div>
     </div>
 
@@ -439,8 +439,8 @@
       <div class="step-body" style="justify-content: center;">
         <div class="complete-container">
           <div class="complete-icon">✓</div>
-          <div class="complete-title">Zapretify успешно установлен!</div>
-          <div class="complete-desc">
+          <div class="complete-title" id="complete-title">Zapretify успешно установлен!</div>
+          <div class="complete-desc" id="complete-desc">
             Все компоненты программы, базы и драйверы WinDivert готовы к работе.
           </div>
           <label class="checkbox-row" style="margin-top: 10px;">
@@ -460,11 +460,32 @@
   </div>
 
   <script>
+    let isUpgrade = false;
+
     async function init() {
       try {
         const res = await fetch('/api/info');
         const data = await res.json();
         document.getElementById('install-path').value = data.default_path;
+
+        if (data.is_installed) {
+          isUpgrade = true;
+          document.getElementById('hdr-badge').innerText = `v${data.version} Update`;
+          document.getElementById('hdr-subtitle').innerText = `Обнаружена установленная версия v${data.installed_version || '1.2.x'}. Мастер обновит программу без потери настроек.`;
+          document.getElementById('lbl-path-title').innerText = 'Каталог установленной программы';
+          document.getElementById('btn-start').innerText = `Обновить Zapretify до v${data.version}`;
+          document.getElementById('complete-title').innerText = 'Zapretify успешно обновлен!';
+          document.getElementById('complete-desc').innerText = `Программа успешно обновлена до версии v${data.version}. Ваши пользовательские настройки и списки сохранены.`;
+
+          if (typeof data.has_autostart === 'boolean') {
+            document.getElementById('chk-autostart').checked = data.has_autostart;
+          }
+          if (typeof data.has_service === 'boolean') {
+            document.getElementById('chk-service').checked = data.has_service;
+          }
+        } else {
+          document.getElementById('hdr-badge').innerText = `v${data.version} Setup`;
+        }
       } catch (e) {
         document.getElementById('install-path').value = 'C:\\Program Files\\Zapretify';
       }
@@ -507,7 +528,8 @@
         desktop_shortcut: document.getElementById('chk-desktop').checked,
         start_menu: document.getElementById('chk-startmenu').checked,
         autostart: document.getElementById('chk-autostart').checked,
-        install_service: document.getElementById('chk-service').checked
+        install_service: document.getElementById('chk-service').checked,
+        is_upgrade: isUpgrade
       };
 
       // Start listening to progress
