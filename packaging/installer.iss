@@ -1,6 +1,6 @@
 ; Inno Setup Script for Zapretify
 #define MyAppName "Zapretify"
-#define MyAppVersion "1.2.3"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "selfdestroyer"
 #define MyAppURL "https://github.com/selfdestroyer/Zapretify"
 #define MyAppExeName "Zapretify.exe"

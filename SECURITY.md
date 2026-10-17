@@ -4,22 +4,14 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 1.2.3 | :white_check_mark: | Active release with hardened local API security |
-| <= 1.2.2 | :x: | **Vulnerable.** Please upgrade immediately |
+| 1.3.0 | :white_check_mark: | Current release with hardened local API security |
+| < 1.3.0 | :x: | Recommended to upgrade |
 
 ---
 
-## Security Advisory: Versions prior to 1.2.3
+## Security Model (v1.3.0+)
 
-In Zapretify versions up to **1.2.2**, the local HTTP backend server (running with elevated administrator privileges required for the WinDivert kernel driver) did not strictly enforce request origin verification and cryptographic session token headers. Under specific conditions, malicious websites opened in the user's web browser could attempt cross-origin requests (CSRF / DNS rebinding) against `127.0.0.1` to trigger privileged actions or tamper with settings.
-
-**Users running Zapretify 1.2.2 or earlier are strongly advised to update to version 1.2.3.**
-
----
-
-## Security Model (v1.2.3+)
-
-Zapretify v1.2.3 implements defense-in-depth protection for all IPC and local server endpoints:
+Zapretify implements defense-in-depth protection for all IPC and local server endpoints:
 
 1. **Header-Based Cryptographic Authentication (`X-Zapretify-Token`)**:
    - At startup, the application generates a cryptographically secure 256-bit random token.
