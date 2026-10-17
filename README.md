@@ -326,6 +326,10 @@ Zapretify/
 │   ├── tgproxy/              # Реализация ядра tg-ws-proxy (WebSocket MTProto bridge)
 │   ├── updater/              # Синхронизатор баз и стратегий Flowseal
 │   └── zapret/               # Диспетчер процесса winws, WinDivert, бенчмарк, служба
+├── docs/                     # Документация (архитектура, безопасность, история версий)
+│   ├── ARCHITECTURE.md       # Подробное описание технической архитектуры
+│   ├── CHANGELOG.md          # История версий и изменений
+│   └── SECURITY.md           # Модель безопасности и контакты
 ├── frontend/                 # Пользовательский интерфейс (Single Page Application)
 │   └── dist/index.html       # Легковесный HTML5/CSS3/Vanilla JS фронтенд
 ├── lists/                    # Списки хостов и IP-диапазонов Flowseal
