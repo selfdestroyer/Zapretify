@@ -2,6 +2,7 @@ package zapret
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,8 +16,24 @@ func NewListManager(listsDir string) *ListManager {
 	return &ListManager{listsDir: listsDir}
 }
 
+func (m *ListManager) cleanPath(filename string) (string, error) {
+	cleanName := filepath.Base(filepath.Clean(filename))
+	if cleanName == "." || cleanName == "/" || cleanName == "\\" || strings.Contains(filename, "..") || strings.ContainsAny(filename, `/\`) {
+		return "", fmt.Errorf("invalid list filename: %s", filename)
+	}
+	fullPath := filepath.Join(m.listsDir, cleanName)
+	rel, err := filepath.Rel(m.listsDir, fullPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("path traversal detected: %s", filename)
+	}
+	return fullPath, nil
+}
+
 func (m *ListManager) ReadRaw(filename string) (string, error) {
-	p := filepath.Join(m.listsDir, filename)
+	p, err := m.cleanPath(filename)
+	if err != nil {
+		return "", err
+	}
 	data, err := os.ReadFile(p)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -28,7 +45,10 @@ func (m *ListManager) ReadRaw(filename string) (string, error) {
 }
 
 func (m *ListManager) WriteRaw(filename string, content string) error {
-	p := filepath.Join(m.listsDir, filename)
+	p, err := m.cleanPath(filename)
+	if err != nil {
+		return err
+	}
 	_ = os.MkdirAll(m.listsDir, 0755)
 	return os.WriteFile(p, []byte(content), 0644)
 }

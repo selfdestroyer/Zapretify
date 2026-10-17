@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
+	"crypto/rand"
 	"embed"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -82,9 +85,27 @@ func main() {
 		os.Exit(0)
 	}
 
+	// 1. Single Instance Check (Windows mutex / restore existing window)
+	release, isPrimary := ensureSingleInstance()
+	if !isPrimary {
+		logger.Log("[Zapretify] Обнаружена уже запущенная копия программы. Переключение на активное окно...")
+		os.Exit(0)
+	}
+	defer release()
+
 	// 2. Initialize Core App
+	rootCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	app := NewApp()
-	app.startup(nil)
+	app.startup(rootCtx)
+
+	// Generate random 16-byte session token for local API protection
+	tokenBytes := make([]byte, 16)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		log.Fatalf("Failed to generate session token: %v", err)
+	}
+	sessionToken := hex.EncodeToString(tokenBytes)
 
 	// 3. Local Web GUI Server (Embedded, Ultra-lightweight ~15MB RAM)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -107,17 +128,20 @@ func main() {
 		mux.Handle("/", http.FileServer(http.Dir("frontend/dist")))
 	}
 
+	// Wrap mux with security middleware (DNS rebinding, CSRF, Token auth)
+	securedHandler := securityMiddleware(sessionToken, port, mux)
+
 	server := &http.Server{
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		Handler:      securedHandler,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 180 * time.Second, // Long enough for strategy benchmarks
 	}
 
 	go func() {
 		_ = server.Serve(listener)
 	}()
 
-	guiURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	guiURL := fmt.Sprintf("http://127.0.0.1:%d/?token=%s", port, sessionToken)
 	log.Printf("[Zapretify] GUI запущен на %s\n", guiURL)
 
 	// 4. Graceful OS signal handling
@@ -126,6 +150,7 @@ func main() {
 	go func() {
 		<-sigChan
 		logger.Log("[Zapretify] Получен сигнал завершения. Остановка всех процессов...")
+		cancel()
 		app.Shutdown()
 		ExitGUIWindow()
 		os.Exit(0)
@@ -137,6 +162,7 @@ func main() {
 	runGUIWindow(guiURL, "Zapretify", 1060, 700, startInTray, app)
 
 	// Clean shutdown when GUI window closes
+	cancel()
 	app.Shutdown()
 	logger.Log("[Zapretify] Приложение успешно закрыто.")
 }

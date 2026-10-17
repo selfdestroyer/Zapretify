@@ -120,8 +120,8 @@ func (a *App) StartZapret(strategyID string) error {
 	_ = zapret.EnsureUserLists(a.listsDir)
 	_ = zapret.SetIPSetMode(a.listsDir, cfg.Zapret.IPSetMode)
 
-	// Kill any stale winws processes before starting
-	_ = runHidden("taskkill", "/IM", "winws.exe", "/F")
+	// Stop any previously running process runner for this app before starting
+	_ = zapret.GetRunner().Stop()
 
 	if cfg.Zapret.ServiceMode {
 		status, _, _ := zapret.GetServiceStatus()
@@ -171,8 +171,7 @@ func (a *App) StopZapret() error {
 	logger.Log("[Zapret] Запрос остановки...")
 	_ = zapret.GetRunner().Stop()
 	_ = zapret.StopService()
-	_ = runHidden("taskkill", "/IM", "winws.exe", "/F")
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	logger.Log("[Zapret] Остановка завершена.")
 	return nil
 }
@@ -296,7 +295,7 @@ func (a *App) PingTelegramDCs() map[string]float64 {
 		"DC 1 (Miami)":     "149.154.175.50",
 		"DC 2 (Amsterdam)": "149.154.167.220",
 		"DC 3 (Miami)":     "149.154.175.100",
-		"DC 4 (Amsterdam)": "149.154.167.220",
+		"DC 4 (Amsterdam)": "149.154.167.91",
 		"DC 5 (Singapore)": "91.108.56.165",
 	}
 

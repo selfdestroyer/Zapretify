@@ -622,6 +622,37 @@
   </div>
 
   <script>
+    // Global API Token handling for secure local communication
+    const urlParams = new URLSearchParams(window.location.search);
+    const apiToken = window.__ZAPRETIFY_TOKEN__ || urlParams.get('token') || '';
+    if (urlParams.has('token')) {
+      window.__ZAPRETIFY_TOKEN__ = apiToken;
+      try {
+        const cleanUrl = window.location.pathname + window.location.hash;
+        history.replaceState(null, '', cleanUrl);
+      } catch (_) {}
+    }
+    const _origFetch = window.fetch;
+    window.fetch = function(input, init) {
+      init = init || {};
+      const token = window.__ZAPRETIFY_TOKEN__ || apiToken;
+      if (token) {
+        if (input instanceof Request) {
+          input.headers.set('X-Zapretify-Token', token);
+        } else {
+          init.headers = init.headers || {};
+          if (init.headers instanceof Headers) {
+            init.headers.set('X-Zapretify-Token', token);
+          } else if (Array.isArray(init.headers)) {
+            init.headers.push(['X-Zapretify-Token', token]);
+          } else {
+            init.headers['X-Zapretify-Token'] = token;
+          }
+        }
+      }
+      return _origFetch.call(this, input, init);
+    };
+
     function openExternal(url) {
       if (!url) return;
       fetch('/api/open-url?url=' + encodeURIComponent(url)).catch(() => {});

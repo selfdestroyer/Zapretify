@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"time"
 
 	"zapretify/core/config"
@@ -11,6 +12,23 @@ import (
 func writeJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func writeJSONStatus(w http.ResponseWriter, code int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(data)
+}
+
+func requirePost(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		writeJSONStatus(w, http.StatusMethodNotAllowed, map[string]string{
+			"status": "error",
+			"error":  "Method Not Allowed: POST is required",
+		})
+		return false
+	}
+	return true
 }
 
 func registerAPIRoutes(mux *http.ServeMux, app *App) {
@@ -27,10 +45,16 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		if r.Method == http.MethodPost {
 			var cfg config.Config
 			if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
 				return
 			}
-			_ = app.SaveConfig(&cfg)
+			if err := app.SaveConfig(&cfg); err != nil {
+				writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+				return
+			}
+		} else if r.Method != http.MethodGet {
+			writeJSONStatus(w, http.StatusMethodNotAllowed, map[string]string{"status": "error", "error": "Method Not Allowed"})
+			return
 		}
 		writeJSON(w, app.GetConfig())
 	})
@@ -40,10 +64,13 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/zapret/start", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		stratID := r.URL.Query().Get("strategy")
 		err := app.StartZapret(stratID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
@@ -54,7 +81,14 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/zapret/stop", func(w http.ResponseWriter, r *http.Request) {
-		_ = app.StopZapret()
+		if !requirePost(w, r) {
+			return
+		}
+		err := app.StopZapret()
+		if err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
 		writeJSON(w, map[string]string{"status": "ok"})
 		go func() {
 			time.Sleep(200 * time.Millisecond)
@@ -63,32 +97,55 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/zapret/install-service", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		stratID := r.URL.Query().Get("strategy")
 		err := app.InstallZapretService(stratID)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
 	mux.HandleFunc("/api/zapret/remove-service", func(w http.ResponseWriter, r *http.Request) {
-		_ = app.RemoveZapretService()
+		if !requirePost(w, r) {
+			return
+		}
+		err := app.RemoveZapretService()
+		if err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
 	mux.HandleFunc("/api/zapret/force-kill", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		_ = app.ForceKillZapret()
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
 	mux.HandleFunc("/api/app/force-exit", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		writeJSON(w, map[string]string{"status": "ok", "message": "Приложение и все зависимости завершаются..."})
 		_ = app.ForceExitAll()
 	})
 
 	mux.HandleFunc("/api/zapret/reset-drivers", func(w http.ResponseWriter, r *http.Request) {
-		_ = app.ResetDrivers()
+		if !requirePost(w, r) {
+			return
+		}
+		err := app.ResetDrivers()
+		if err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
@@ -101,11 +158,14 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/zapret/benchmark-all", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		method := r.URL.Query().Get("method")
 		targets := r.URL.Query().Get("targets")
 		err := app.StartAutoBenchmark(method, targets)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, map[string]string{"status": "started"})
@@ -123,7 +183,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/zapret/open-test-log", func(w http.ResponseWriter, r *http.Request) {
 		err := app.OpenTestLog()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
@@ -132,7 +192,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/zapret/test-log", func(w http.ResponseWriter, r *http.Request) {
 		content, err := app.GetTestLog()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			writeJSONStatus(w, http.StatusNotFound, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, map[string]string{"content": content})
@@ -141,15 +201,21 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/zapret/ipset-mode", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			mode := r.URL.Query().Get("mode")
-			_ = app.SetIPSetMode(mode)
+			if err := app.SetIPSetMode(mode); err != nil {
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
+				return
+			}
 		}
 		writeJSON(w, map[string]string{"mode": app.GetIPSetMode()})
 	})
 
 	mux.HandleFunc("/api/tg/start", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		err := app.StartTGProxy()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
@@ -160,7 +226,14 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/tg/stop", func(w http.ResponseWriter, r *http.Request) {
-		_ = app.StopTGProxy()
+		if !requirePost(w, r) {
+			return
+		}
+		err := app.StopTGProxy()
+		if err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
 		writeJSON(w, map[string]string{"status": "ok"})
 		go func() {
 			time.Sleep(200 * time.Millisecond)
@@ -177,18 +250,24 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/platform/restart-admin", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		err := app.RestartAsAdmin()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
 	mux.HandleFunc("/api/platform/fix-tcp", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		err := app.FixTCPTimestamps()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
@@ -197,16 +276,19 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/updater/check", func(w http.ResponseWriter, r *http.Request) {
 		res, err := app.CheckAppUpdate()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, res)
 	})
 
 	mux.HandleFunc("/api/updater/assets", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		res, err := app.UpdateAssets()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
 			return
 		}
 		writeJSON(w, res)
@@ -218,13 +300,29 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			fn = "list-general.txt"
 		}
 		if r.Method == http.MethodPost {
+			// Limit body to 5MB to avoid denial-of-service memory exhaustion
+			r.Body = http.MaxBytesReader(w, r.Body, 5*1024*1024)
 			var body struct {
 				Content string `json:"content"`
 			}
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			_ = app.SaveList(fn, body.Content)
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
+				return
+			}
+			if err := app.SaveList(fn, body.Content); err != nil {
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
+				return
+			}
+		} else if r.Method != http.MethodGet {
+			writeJSONStatus(w, http.StatusMethodNotAllowed, map[string]string{"status": "error", "error": "Method Not Allowed"})
+			return
 		}
-		content, _ := app.ReadList(fn)
+
+		content, err := app.ReadList(fn)
+		if err != nil {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
 		writeJSON(w, map[string]string{"file": fn, "content": content})
 	})
 
@@ -233,6 +331,9 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/logs/clear", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		app.ClearLogs()
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
@@ -243,9 +344,18 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 
 	mux.HandleFunc("/api/open-url", func(w http.ResponseWriter, r *http.Request) {
 		targetURL := r.URL.Query().Get("url")
-		if targetURL != "" {
-			openBrowser(targetURL)
+		if targetURL == "" {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "URL parameter is required"})
+			return
 		}
+
+		parsed, err := url.Parse(targetURL)
+		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http" && parsed.Scheme != "tg") {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Forbidden URL scheme. Only https, http, and tg protocols are permitted"})
+			return
+		}
+
+		openBrowser(targetURL)
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 }

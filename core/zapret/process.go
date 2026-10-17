@@ -153,8 +153,9 @@ func (p *ProcessRunner) Stop() error {
 	defer p.mu.Unlock()
 
 	p.emitLog("Остановка Zapret...")
-	_ = platform.RunHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
 	if p.cmd != nil && p.cmd.Process != nil {
+		pid := p.cmd.Process.Pid
+		_ = platform.RunHidden("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F", "/T")
 		_ = p.cmd.Process.Kill()
 		done := make(chan error, 1)
 		go func(c *exec.Cmd) {
