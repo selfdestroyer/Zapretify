@@ -655,7 +655,7 @@
 
     function openExternal(url) {
       if (!url) return;
-      fetch('/api/open-url?url=' + encodeURIComponent(url)).catch(() => {});
+      fetch('/api/open-url?url=' + encodeURIComponent(url), { method: 'POST' }).catch(() => {});
     }
 
     // Intercept window.open so WebView2 never creates embedded browser popup windows

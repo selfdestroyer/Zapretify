@@ -21,8 +21,19 @@ var (
 )
 
 const (
+	SW_SHOW_CMD    = 5
 	SW_RESTORE_CMD = 9
 )
+
+func restoreExistingWindow() {
+	windowTitle, _ := windows.UTF16PtrFromString("Zapretify")
+	hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(windowTitle)))
+	if hwnd != 0 {
+		procShowWindowSI.Call(hwnd, uintptr(SW_SHOW_CMD))
+		procShowWindowSI.Call(hwnd, uintptr(SW_RESTORE_CMD))
+		procSetForegroundWindowSI.Call(hwnd)
+	}
+}
 
 // ensureSingleInstance ensures only one instance of Zapretify runs at a time.
 // If an instance is already running, it brings the existing window to the foreground and returns false.
@@ -34,18 +45,17 @@ func ensureSingleInstance() (func(), bool) {
 		uintptr(unsafe.Pointer(mutexName)),
 	)
 
+	// If handle == 0: check if error is ACCESS_DENIED or ALREADY_EXISTS (e.g. non-admin opening admin mutex)
 	if handle == 0 {
+		if err == syscall.Errno(windows.ERROR_ALREADY_EXISTS) || err == syscall.Errno(windows.ERROR_ACCESS_DENIED) {
+			restoreExistingWindow()
+			return func() {}, false
+		}
 		return func() {}, true
 	}
 
-	if err == syscall.Errno(windows.ERROR_ALREADY_EXISTS) {
-		// Existing instance found: bring its window to the foreground
-		windowTitle, _ := windows.UTF16PtrFromString("Zapretify")
-		hwnd, _, _ := procFindWindowW.Call(0, uintptr(unsafe.Pointer(windowTitle)))
-		if hwnd != 0 {
-			procShowWindowSI.Call(hwnd, uintptr(SW_RESTORE_CMD))
-			procSetForegroundWindowSI.Call(hwnd)
-		}
+	if err == syscall.Errno(windows.ERROR_ALREADY_EXISTS) || err == syscall.Errno(windows.ERROR_ACCESS_DENIED) {
+		restoreExistingWindow()
 		procCloseHandle.Call(handle)
 		return func() {}, false
 	}

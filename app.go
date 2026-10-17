@@ -382,15 +382,7 @@ func (a *App) OpenTestLog() error {
 	if _, err := os.Stat(reportPath); os.IsNotExist(err) {
 		return fmt.Errorf("файл отчета test_results.txt еще не создан. Сначала проведите тест.")
 	}
-
-	switch runtime.GOOS {
-	case "windows":
-		return exec.Command("cmd", "/c", "start", "", reportPath).Start()
-	case "darwin":
-		return exec.Command("open", reportPath).Start()
-	default:
-		return exec.Command("xdg-open", reportPath).Start()
-	}
+	return platform.OpenFile(reportPath)
 }
 
 func (a *App) GetTestLog() (string, error) {

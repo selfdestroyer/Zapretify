@@ -19,15 +19,18 @@ func TestSecurityMiddleware(t *testing.T) {
 
 	tests := []struct {
 		name           string
+		method         string
 		path           string
 		host           string
 		origin         string
+		secFetchSite   string
 		headerToken    string
 		queryToken     string
 		expectedStatus int
 	}{
 		{
 			name:           "Valid API request with header token",
+			method:         "GET",
 			path:           "/api/status",
 			host:           "127.0.0.1:8080",
 			origin:         "http://127.0.0.1:8080",
@@ -35,22 +38,42 @@ func TestSecurityMiddleware(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "Valid API request with query token",
+			name:           "Query token rejected for API path (header required)",
+			method:         "GET",
 			path:           "/api/status",
 			host:           "localhost:8080",
 			origin:         "http://localhost:8080",
 			queryToken:     token,
-			expectedStatus: http.StatusOK,
+			expectedStatus: http.StatusUnauthorized,
 		},
 		{
-			name:           "Static file request allowed without token",
+			name:           "Static file GET allowed without token",
+			method:         "GET",
 			path:           "/index.html",
 			host:           "127.0.0.1:8080",
 			origin:         "",
 			expectedStatus: http.StatusOK,
 		},
 		{
+			name:           "Static file POST requires token (fail closed)",
+			method:         "POST",
+			path:           "/index.html",
+			host:           "127.0.0.1:8080",
+			origin:         "http://127.0.0.1:8080",
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name:           "Origin null blocked (sandboxed iframe / data uri / file uri)",
+			method:         "POST",
+			path:           "/api/config",
+			host:           "127.0.0.1:8080",
+			origin:         "null",
+			headerToken:    token,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
 			name:           "Invalid Host blocked (DNS rebinding)",
+			method:         "GET",
 			path:           "/api/status",
 			host:           "evil.attacker.com",
 			headerToken:    token,
@@ -58,14 +81,36 @@ func TestSecurityMiddleware(t *testing.T) {
 		},
 		{
 			name:           "Invalid Origin blocked (CSRF)",
-			path:           "/api/status",
+			method:         "POST",
+			path:           "/api/config",
 			host:           "127.0.0.1:8080",
 			origin:         "http://evil.attacker.com",
 			headerToken:    token,
 			expectedStatus: http.StatusForbidden,
 		},
 		{
+			name:           "Sec-Fetch-Site cross-site blocked",
+			method:         "GET",
+			path:           "/api/status",
+			host:           "127.0.0.1:8080",
+			origin:         "http://127.0.0.1:8080",
+			secFetchSite:   "cross-site",
+			headerToken:    token,
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "Sec-Fetch-Site same-origin allowed",
+			method:         "GET",
+			path:           "/api/status",
+			host:           "127.0.0.1:8080",
+			origin:         "http://127.0.0.1:8080",
+			secFetchSite:   "same-origin",
+			headerToken:    token,
+			expectedStatus: http.StatusOK,
+		},
+		{
 			name:           "Missing token on API path",
+			method:         "GET",
 			path:           "/api/status",
 			host:           "127.0.0.1:8080",
 			origin:         "http://127.0.0.1:8080",
@@ -73,6 +118,7 @@ func TestSecurityMiddleware(t *testing.T) {
 		},
 		{
 			name:           "Wrong token on API path",
+			method:         "GET",
 			path:           "/api/status",
 			host:           "127.0.0.1:8080",
 			origin:         "http://127.0.0.1:8080",
@@ -87,10 +133,13 @@ func TestSecurityMiddleware(t *testing.T) {
 			if tt.queryToken != "" {
 				url += "?token=" + tt.queryToken
 			}
-			req := httptest.NewRequest("GET", url, nil)
+			req := httptest.NewRequest(tt.method, url, nil)
 			req.Host = tt.host
 			if tt.origin != "" {
 				req.Header.Set("Origin", tt.origin)
+			}
+			if tt.secFetchSite != "" {
+				req.Header.Set("Sec-Fetch-Site", tt.secFetchSite)
 			}
 			if tt.headerToken != "" {
 				req.Header.Set("X-Zapretify-Token", tt.headerToken)
@@ -101,6 +150,11 @@ func TestSecurityMiddleware(t *testing.T) {
 
 			if rec.Code != tt.expectedStatus {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rec.Code)
+			}
+
+			// Verify security headers
+			if rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+				t.Errorf("expected X-Content-Type-Options: nosniff, got %q", rec.Header().Get("X-Content-Type-Options"))
 			}
 		})
 	}

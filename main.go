@@ -45,12 +45,6 @@ func main() {
 		return
 	}
 
-	if runtime.GOOS == "windows" && !platform.IsAdmin() && !*minimized {
-		if err := platform.RunAsAdmin(os.Args[1:]...); err == nil {
-			os.Exit(0)
-		}
-	}
-
 	exePath, err := os.Executable()
 	if err != nil {
 		exePath = "."
@@ -64,6 +58,10 @@ func main() {
 
 	if *installSvc != "" {
 		stratID := *installSvc
+		if !validStrategy(stratID) {
+			fmt.Printf("Ошибка: неизвестная стратегия '%s'\n", stratID)
+			os.Exit(1)
+		}
 		cfg := config.Get()
 		_ = zapret.SetIPSetMode(listsDir, cfg.Zapret.IPSetMode)
 		err := zapret.InstallService(stratID, binDir, listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
@@ -85,13 +83,29 @@ func main() {
 		os.Exit(0)
 	}
 
-	// 1. Single Instance Check (Windows mutex / restore existing window)
-	release, isPrimary := ensureSingleInstance()
+	// 1. Pre-elevation Single Instance Check (Windows mutex / restore existing window)
+	// If an instance is already running (elevated or not), restore its window and exit immediately
+	// WITHOUT showing the user an unnecessary UAC prompt!
+	releaseMutex, isPrimary := ensureSingleInstance()
 	if !isPrimary {
-		logger.Log("[Zapretify] Обнаружена уже запущенная копия программы. Переключение на активное окно...")
 		os.Exit(0)
 	}
-	defer release()
+
+	if runtime.GOOS == "windows" && !platform.IsAdmin() && !*minimized {
+		// Release the pre-elevation mutex so the elevated child process can acquire it
+		releaseMutex()
+		if err := platform.RunAsAdmin(os.Args[1:]...); err == nil {
+			os.Exit(0)
+		}
+		// If elevation was cancelled by user, re-acquire mutex to run non-elevated
+		r, ok := ensureSingleInstance()
+		if !ok {
+			os.Exit(0)
+		}
+		defer r()
+	} else {
+		defer releaseMutex()
+	}
 
 	// 2. Initialize Core App
 	rootCtx, cancel := context.WithCancel(context.Background())
@@ -132,9 +146,11 @@ func main() {
 	securedHandler := securityMiddleware(sessionToken, port, mux)
 
 	server := &http.Server{
-		Handler:      securedHandler,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 180 * time.Second, // Long enough for strategy benchmarks
+		Handler:           securedHandler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      180 * time.Second, // Long enough for strategy benchmarks
+		IdleTimeout:       120 * time.Second,
 	}
 
 	go func() {
@@ -142,7 +158,7 @@ func main() {
 	}()
 
 	guiURL := fmt.Sprintf("http://127.0.0.1:%d/?token=%s", port, sessionToken)
-	log.Printf("[Zapretify] GUI запущен на %s\n", guiURL)
+	log.Printf("[Zapretify] GUI запущен на http://127.0.0.1:%d\n", port)
 
 	// 4. Graceful OS signal handling
 	sigChan := make(chan os.Signal, 1)

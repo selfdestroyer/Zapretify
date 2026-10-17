@@ -4,9 +4,16 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"sync"
+)
+
+var (
+	githubRepoRegex = regexp.MustCompile(`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`)
 )
 
 type AppConfig struct {
@@ -55,6 +62,57 @@ type Config struct {
 
 	mu         sync.RWMutex `json:"-"`
 	configPath string       `json:"-"`
+}
+
+// Validate checks configuration fields for sanity and security.
+func (c *Config) Validate() error {
+	// Port range 1024-65535 for TGProxy
+	if c.TGProxy.Port < 1024 || c.TGProxy.Port > 65535 {
+		return fmt.Errorf("invalid TGProxy port %d: must be between 1024 and 65535", c.TGProxy.Port)
+	}
+
+	// Host: only loopback allowed (127.0.0.1, localhost, ::1, or empty)
+	host := strings.TrimSpace(strings.ToLower(c.TGProxy.Host))
+	if host != "" && host != "127.0.0.1" && host != "localhost" && host != "::1" {
+		return fmt.Errorf("invalid TGProxy host %q: only loopback (127.0.0.1, localhost) is permitted", c.TGProxy.Host)
+	}
+
+	// Secret: valid 32-character hex string (16 bytes)
+	if c.TGProxy.Secret != "" {
+		secBytes, err := hex.DecodeString(c.TGProxy.Secret)
+		if err != nil || len(secBytes) != 16 {
+			return fmt.Errorf("invalid TGProxy secret: must be a 32-character hex string (16 bytes)")
+		}
+	}
+
+	// GithubRepo: must follow owner/repo format
+	if c.App.GithubRepo != "" {
+		if !githubRepoRegex.MatchString(c.App.GithubRepo) {
+			return fmt.Errorf("invalid GithubRepo %q: must match owner/repo pattern", c.App.GithubRepo)
+		}
+	}
+
+	// IPSetMode: loaded, none, any
+	if c.Zapret.IPSetMode != "" {
+		switch strings.ToLower(c.Zapret.IPSetMode) {
+		case "loaded", "none", "any":
+			// valid
+		default:
+			return fmt.Errorf("invalid IPSetMode %q: allowed modes are 'none', 'loaded', 'any'", c.Zapret.IPSetMode)
+		}
+	}
+
+	// GameFilterMode: disabled, udp, tcp, all
+	if c.Zapret.GameFilterMode != "" {
+		switch strings.ToLower(c.Zapret.GameFilterMode) {
+		case "disabled", "udp", "tcp", "all":
+			// valid
+		default:
+			return fmt.Errorf("invalid GameFilterMode %q: allowed modes are 'disabled', 'udp', 'tcp', 'all'", c.Zapret.GameFilterMode)
+		}
+	}
+
+	return nil
 }
 
 func DefaultConfig() *Config {

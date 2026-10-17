@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
-	"zapretify/core/config"
+	"zapretify/core/zapret"
 )
 
 func writeJSON(w http.ResponseWriter, data interface{}) {
@@ -31,6 +32,75 @@ func requirePost(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+func validStrategy(id string) bool {
+	if id == "" {
+		return true
+	}
+	_, ok := zapret.GetRegistry().Find(id)
+	return ok
+}
+
+func validBenchmarkMethod(method string) bool {
+	if method == "" {
+		return true
+	}
+	switch strings.ToLower(method) {
+	case "all", "dpi", "https":
+		return true
+	default:
+		return false
+	}
+}
+
+func validBenchmarkTargetGroup(group string) bool {
+	if group == "" {
+		return true
+	}
+	switch strings.ToLower(group) {
+	case "all", "yt_discord", "blockcheck":
+		return true
+	default:
+		return false
+	}
+}
+
+func validIPSetMode(mode string) bool {
+	switch strings.ToLower(mode) {
+	case "none", "loaded", "any":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAllowedURL(u *url.URL) bool {
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "tg" {
+		return true
+	}
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" {
+		return false
+	}
+	allowedHosts := []string{
+		"github.com",
+		"api.github.com",
+		"raw.githubusercontent.com",
+		"t.me",
+		"telegram.me",
+		"telegram.org",
+	}
+	for _, h := range allowedHosts {
+		if host == h || strings.HasSuffix(host, "."+h) {
+			return true
+		}
+	}
+	return false
+}
+
 func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		status := map[string]interface{}{
@@ -43,17 +113,48 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			var cfg config.Config
-			if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
-				writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
+			r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
+			current := app.GetConfig()
+			cfgCopy := *current
+
+			decoder := json.NewDecoder(r.Body)
+			decoder.DisallowUnknownFields()
+			if err := decoder.Decode(&cfgCopy); err != nil {
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{
+					"status": "error",
+					"error":  "Invalid config JSON: " + err.Error(),
+				})
 				return
 			}
-			if err := app.SaveConfig(&cfg); err != nil {
-				writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+
+			if err := cfgCopy.Validate(); err != nil {
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{
+					"status": "error",
+					"error":  "Config validation failed: " + err.Error(),
+				})
+				return
+			}
+
+			if cfgCopy.Zapret.Strategy != "" && !validStrategy(cfgCopy.Zapret.Strategy) {
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{
+					"status": "error",
+					"error":  "Invalid zapret strategy ID: strategy not found in registry",
+				})
+				return
+			}
+
+			if err := app.SaveConfig(&cfgCopy); err != nil {
+				writeJSONStatus(w, http.StatusInternalServerError, map[string]string{
+					"status": "error",
+					"error":  err.Error(),
+				})
 				return
 			}
 		} else if r.Method != http.MethodGet {
-			writeJSONStatus(w, http.StatusMethodNotAllowed, map[string]string{"status": "error", "error": "Method Not Allowed"})
+			writeJSONStatus(w, http.StatusMethodNotAllowed, map[string]string{
+				"status": "error",
+				"error":  "Method Not Allowed: only GET and POST are supported",
+			})
 			return
 		}
 		writeJSON(w, app.GetConfig())
@@ -68,6 +169,10 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		stratID := r.URL.Query().Get("strategy")
+		if !validStrategy(stratID) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid strategy ID"})
+			return
+		}
 		err := app.StartZapret(stratID)
 		if err != nil {
 			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
@@ -101,6 +206,10 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		stratID := r.URL.Query().Get("strategy")
+		if !validStrategy(stratID) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid strategy ID"})
+			return
+		}
 		err := app.InstallZapretService(stratID)
 		if err != nil {
 			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
@@ -150,9 +259,24 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/zapret/benchmark", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		stratID := r.URL.Query().Get("strategy")
+		if !validStrategy(stratID) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid strategy ID"})
+			return
+		}
 		method := r.URL.Query().Get("method")
+		if !validBenchmarkMethod(method) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid benchmark method. Allowed: all, dpi, https"})
+			return
+		}
 		targets := r.URL.Query().Get("targets")
+		if !validBenchmarkTargetGroup(targets) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid benchmark targets. Allowed: all, yt_discord, blockcheck"})
+			return
+		}
 		res := app.RunStrategyBenchmark(stratID, method, targets)
 		writeJSON(w, res)
 	})
@@ -162,7 +286,15 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		method := r.URL.Query().Get("method")
+		if !validBenchmarkMethod(method) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid benchmark method. Allowed: all, dpi, https"})
+			return
+		}
 		targets := r.URL.Query().Get("targets")
+		if !validBenchmarkTargetGroup(targets) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid benchmark targets. Allowed: all, yt_discord, blockcheck"})
+			return
+		}
 		err := app.StartAutoBenchmark(method, targets)
 		if err != nil {
 			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
@@ -177,10 +309,17 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 
 	mux.HandleFunc("/api/zapret/targets", func(w http.ResponseWriter, r *http.Request) {
 		group := r.URL.Query().Get("group")
+		if !validBenchmarkTargetGroup(group) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid target group. Allowed: all, yt_discord, blockcheck"})
+			return
+		}
 		writeJSON(w, app.GetTargetsByGroup(group))
 	})
 
 	mux.HandleFunc("/api/zapret/open-test-log", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		err := app.OpenTestLog()
 		if err != nil {
 			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
@@ -201,10 +340,17 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/zapret/ipset-mode", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
 			mode := r.URL.Query().Get("mode")
+			if !validIPSetMode(mode) {
+				writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid ipset mode. Allowed: none, loaded, any"})
+				return
+			}
 			if err := app.SetIPSetMode(mode); err != nil {
 				writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
 				return
 			}
+		} else if r.Method != http.MethodGet {
+			writeJSONStatus(w, http.StatusMethodNotAllowed, map[string]string{"status": "error", "error": "Method Not Allowed: only GET and POST are supported"})
+			return
 		}
 		writeJSON(w, map[string]string{"mode": app.GetIPSetMode()})
 	})
@@ -343,6 +489,9 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/open-url", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
 		targetURL := r.URL.Query().Get("url")
 		if targetURL == "" {
 			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "URL parameter is required"})
@@ -350,12 +499,15 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		}
 
 		parsed, err := url.Parse(targetURL)
-		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http" && parsed.Scheme != "tg") {
-			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Forbidden URL scheme. Only https, http, and tg protocols are permitted"})
+		if err != nil || !isAllowedURL(parsed) {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{
+				"status": "error",
+				"error":  "Forbidden URL scheme or host. Only trusted https, http, and tg URLs are permitted",
+			})
 			return
 		}
 
-		openBrowser(targetURL)
+		openBrowser(parsed.String())
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 }

@@ -63,3 +63,24 @@ func RunAsAdmin(args ...string) error {
 	}
 	return nil
 }
+
+// OpenFile opens a local file using the system default handler via ShellExecuteW
+func OpenFile(path string) error {
+	verbPtr, _ := windows.UTF16PtrFromString("open")
+	pathPtr, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return err
+	}
+	ret, _, _ := procShellExecuteW.Call(
+		0,
+		uintptr(unsafe.Pointer(verbPtr)),
+		uintptr(unsafe.Pointer(pathPtr)),
+		0,
+		0,
+		windows.SW_NORMAL,
+	)
+	if ret <= 32 {
+		return fmt.Errorf("ShellExecuteW failed with code %d", ret)
+	}
+	return nil
+}

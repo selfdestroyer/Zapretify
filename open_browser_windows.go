@@ -3,6 +3,8 @@
 package main
 
 import (
+	"net/url"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -13,8 +15,18 @@ var (
 	procShellExecuteW = shell32DLL.NewProc("ShellExecuteW")
 )
 
-func openBrowser(url string) {
-	urlPtr, err := windows.UTF16PtrFromString(url)
+func openBrowser(rawURL string) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	if scheme != "http" && scheme != "https" && scheme != "tg" {
+		return
+	}
+
+	cleanURL := parsed.String()
+	urlPtr, err := windows.UTF16PtrFromString(cleanURL)
 	if err != nil {
 		return
 	}
