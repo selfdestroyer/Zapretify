@@ -52,6 +52,9 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
+	// Clean up any orphan winws process left over from a previous unexpected crash
+	zapret.CleanupOrphans(a.binDir)
+
 	// Autostart services ONLY if explicitly configured by user
 	cfg := config.Get()
 	if cfg.TGProxy.Autostart {
@@ -72,11 +75,13 @@ func (a *App) GetConfig() *config.Config {
 }
 
 func (a *App) SaveConfig(cfg *config.Config) error {
+	if err := config.SetAppAutostart(cfg.App.AutostartApp); err != nil {
+		return fmt.Errorf("автозапуск: %w", err)
+	}
 	c := config.Get()
 	c.App = cfg.App
 	c.Zapret = cfg.Zapret
 	c.TGProxy = cfg.TGProxy
-	_ = config.SetAppAutostart(c.App.AutostartApp)
 	return c.Save()
 }
 
@@ -206,14 +211,6 @@ func (a *App) Shutdown() {
 		// 4. Остановка Telegram Proxy
 		logger.Log("[App] Остановка Telegram прокси...")
 		_ = a.StopTGProxy()
-
-		// 5. Завершение всех процессов winws.exe и выгрузка драйверов WinDivert
-		if runtime.GOOS == "windows" {
-			logger.Log("[App] Завершение процессов winws.exe и выгрузка драйвера WinDivert...")
-			_ = runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
-			_ = runHidden("net", "stop", "WinDivert")
-			_ = runHidden("net", "stop", "WinDivert14")
-		}
 
 		logger.Log("[App] Все службы, процессы Zapret и Telegram прокси успешно завершены.")
 		logger.Log("[App] ===================================================")
@@ -356,7 +353,6 @@ func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup
 	logger.Log("[Benchmark] Тест стратегии '%s' завершен (%d/%d доступно). Запрет остановлен, выбор за пользователем.",
 		stratName, res.SuccessCount, res.TotalCount)
 	_ = zapret.GetRunner().Stop()
-	_ = runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
 	time.Sleep(200 * time.Millisecond)
 
 	return res
@@ -407,10 +403,12 @@ func (a *App) GetIPSetMode() string {
 }
 
 func (a *App) SetIPSetMode(mode string) error {
+	if err := zapret.SetIPSetMode(a.listsDir, mode); err != nil {
+		return err
+	}
 	cfg := config.Get()
 	cfg.Zapret.IPSetMode = mode
-	_ = cfg.Save()
-	return zapret.SetIPSetMode(a.listsDir, mode)
+	return cfg.Save()
 }
 
 func (a *App) GetDiagnostics() platform.DiagnosticReport {

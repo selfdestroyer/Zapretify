@@ -54,7 +54,7 @@ func main() {
 	listsDir := filepath.Join(appDir, "lists")
 
 	logger.Init(filepath.Join(appDir, "zapretify.log"))
-	logger.Log("[Zapretify] Старт приложения v1.2.2 (%s/%s)", runtime.GOOS, runtime.GOARCH)
+	logger.Log("[Zapretify] Старт приложения v1.2.3 (%s/%s)", runtime.GOOS, runtime.GOARCH)
 
 	if *installSvc != "" {
 		stratID := *installSvc
@@ -83,29 +83,27 @@ func main() {
 		os.Exit(0)
 	}
 
-	// 1. Pre-elevation Single Instance Check (Windows mutex / restore existing window)
+	// 1. Pre-elevation Single Instance Check
 	// If an instance is already running (elevated or not), restore its window and exit immediately
 	// WITHOUT showing the user an unnecessary UAC prompt!
-	releaseMutex, isPrimary := ensureSingleInstance()
-	if !isPrimary {
+	if isAlreadyRunning() {
+		restoreExistingWindow()
 		os.Exit(0)
 	}
 
 	if runtime.GOOS == "windows" && !platform.IsAdmin() && !*minimized {
-		// Release the pre-elevation mutex so the elevated child process can acquire it
-		releaseMutex()
 		if err := platform.RunAsAdmin(os.Args[1:]...); err == nil {
 			os.Exit(0)
 		}
-		// If elevation was cancelled by user, re-acquire mutex to run non-elevated
-		r, ok := ensureSingleInstance()
-		if !ok {
-			os.Exit(0)
-		}
-		defer r()
-	} else {
-		defer releaseMutex()
 	}
+
+	// 2. Single Instance Check (create/hold mutex for this running process)
+	releaseMutex, isPrimary := ensureSingleInstance()
+	if !isPrimary {
+		logger.Log("[Zapretify] Обнаружена уже запущенная копия программы. Переключение на активное окно...")
+		os.Exit(0)
+	}
+	defer releaseMutex()
 
 	// 2. Initialize Core App
 	rootCtx, cancel := context.WithCancel(context.Background())

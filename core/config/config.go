@@ -222,3 +222,27 @@ func (c *Config) saveUnlocked() error {
 	}
 	return os.Rename(tmp, c.configPath)
 }
+
+// Clone returns a deep copy of the Config without copying the internal mutex.
+func (c *Config) Clone() *Config {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	clone := &Config{
+		App:        c.App,
+		Zapret:     c.Zapret,
+		TGProxy:    c.TGProxy,
+		configPath: c.configPath,
+	}
+
+	if c.TGProxy.CFWorkerDomain != nil {
+		clone.TGProxy.CFWorkerDomain = make([]string, len(c.TGProxy.CFWorkerDomain))
+		copy(clone.TGProxy.CFWorkerDomain, c.TGProxy.CFWorkerDomain)
+	}
+	if c.TGProxy.CFUserDomain != nil {
+		clone.TGProxy.CFUserDomain = make([]string, len(c.TGProxy.CFUserDomain))
+		copy(clone.TGProxy.CFUserDomain, c.TGProxy.CFUserDomain)
+	}
+
+	return clone
+}

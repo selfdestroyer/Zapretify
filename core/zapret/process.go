@@ -3,9 +3,11 @@ package zapret
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 type ProcessRunner struct {
 	cmd            *exec.Cmd
 	activeStrategy string
+	pidFile        string
 	mu             sync.Mutex
 
 	logCallbacks   []func(string)
@@ -128,6 +131,7 @@ func (p *ProcessRunner) Start(
 	p.cmd = cmd
 	p.activeStrategy = strategyID
 	p.stopChan = make(chan struct{})
+	p.savePID(binDir, cmd.Process.Pid)
 
 	go func() {
 		scanner := bufio.NewScanner(stdout)
@@ -148,6 +152,42 @@ func (p *ProcessRunner) Start(
 	return nil
 }
 
+func getPIDFilePath(binDir string) string {
+	return filepath.Join(binDir, "winws.pid")
+}
+
+func (p *ProcessRunner) savePID(binDir string, pid int) {
+	p.pidFile = getPIDFilePath(binDir)
+	_ = os.WriteFile(p.pidFile, []byte(fmt.Sprintf("%d", pid)), 0644)
+}
+
+func (p *ProcessRunner) removePID() {
+	if p.pidFile != "" {
+		_ = os.Remove(p.pidFile)
+		p.pidFile = ""
+	}
+}
+
+// CleanupOrphans checks if a previous instance crashed and left its own winws process running.
+// It terminates only the process recorded in winws.pid, leaving any third-party winws processes untouched.
+func CleanupOrphans(binDir string) {
+	pidPath := getPIDFilePath(binDir)
+	data, err := os.ReadFile(pidPath)
+	if err != nil {
+		return
+	}
+	_ = os.Remove(pidPath)
+
+	pidStr := strings.TrimSpace(string(data))
+	var pid int
+	if _, err := fmt.Sscanf(pidStr, "%d", &pid); err != nil || pid <= 0 {
+		return
+	}
+
+	logger.Log("[Zapret] Обнаружен незавершенный PID %d от предыдущего сеанса. Завершение процесса...", pid)
+	_ = platform.RunHidden("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F", "/T")
+}
+
 func (p *ProcessRunner) Stop() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -166,6 +206,7 @@ func (p *ProcessRunner) Stop() error {
 		case <-time.After(300 * time.Millisecond):
 		}
 	}
+	p.removePID()
 	p.cmd = nil
 	p.activeStrategy = ""
 	p.emitLog("Zapret остановлен.")

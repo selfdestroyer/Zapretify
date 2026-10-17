@@ -115,11 +115,11 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		if r.Method == http.MethodPost {
 			r.Body = http.MaxBytesReader(w, r.Body, 1024*1024)
 			current := app.GetConfig()
-			cfgCopy := *current
+			cfgCopy := current.Clone()
 
 			decoder := json.NewDecoder(r.Body)
 			decoder.DisallowUnknownFields()
-			if err := decoder.Decode(&cfgCopy); err != nil {
+			if err := decoder.Decode(cfgCopy); err != nil {
 				writeJSONStatus(w, http.StatusBadRequest, map[string]string{
 					"status": "error",
 					"error":  "Invalid config JSON: " + err.Error(),
@@ -143,7 +143,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 				return
 			}
 
-			if err := app.SaveConfig(&cfgCopy); err != nil {
+			if err := app.SaveConfig(cfgCopy); err != nil {
 				writeJSONStatus(w, http.StatusInternalServerError, map[string]string{
 					"status": "error",
 					"error":  err.Error(),

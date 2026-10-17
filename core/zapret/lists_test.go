@@ -29,7 +29,7 @@ func TestListManagerPathTraversal(t *testing.T) {
 		t.Errorf("expected %q, got %q", content, readBack)
 	}
 
-	// Traversal attacks
+	// Traversal attacks, extensions, NTFS ADS, and DOS device names
 	attacks := []string{
 		"../secret.txt",
 		"..\\secret.txt",
@@ -40,18 +40,30 @@ func TestListManagerPathTraversal(t *testing.T) {
 		"....//....//file.txt",
 		"../",
 		"..",
+		"exploit.exe",
+		"malware.bat",
+		"payload.ps1",
+		"file.txt:stream",
+		"test.txt:$DATA",
+		"CON.txt",
+		"con.txt",
+		"NUL.txt",
+		"aux.txt",
+		"prn.txt",
+		"com1.txt",
+		"lpt1.txt",
 	}
 
 	for _, attack := range attacks {
 		t.Run("Attack_"+attack, func(t *testing.T) {
 			_, err := lm.ReadRaw(attack)
 			if err == nil {
-				t.Errorf("expected error for path traversal attack %q, got nil", attack)
+				t.Errorf("expected error for attack %q, got nil", attack)
 			}
 
 			err = lm.WriteRaw(attack, "malicious content")
 			if err == nil {
-				t.Errorf("expected error for path traversal write attack %q, got nil", attack)
+				t.Errorf("expected error for write attack %q, got nil", attack)
 			}
 		})
 	}
