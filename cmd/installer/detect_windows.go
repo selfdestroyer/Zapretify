@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	"golang.org/x/sys/windows/registry"
+
+	"zapretify/core/platform"
 )
 
 type InstalledAppInfo struct {
@@ -54,7 +56,7 @@ func detectExistingInstallation() InstalledAppInfo {
 				info.IsInstalled = true
 				info.InstalledPath = p
 				if info.InstalledVersion == "" {
-					info.InstalledVersion = "1.2.1"
+					info.InstalledVersion = ""
 				}
 				break
 			}
@@ -62,7 +64,10 @@ func detectExistingInstallation() InstalledAppInfo {
 	}
 
 	if info.IsInstalled {
-		// 3. Detect if Autostart was configured in HKCU Run
+		// 3. Detect if Autostart was configured: scheduled task (preferred) or legacy HKCU Run entry
+		if platform.RunHidden("schtasks", "/query", "/tn", "Zapretify") == nil {
+			info.HasAutostart = true
+		}
 		if kRun, err := registry.OpenKey(registry.CURRENT_USER, `Software\Microsoft\Windows\CurrentVersion\Run`, registry.QUERY_VALUE); err == nil {
 			val, _, _ := kRun.GetStringValue("Zapretify")
 			_ = kRun.Close()

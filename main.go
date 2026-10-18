@@ -74,7 +74,7 @@ func main() {
 	}
 
 	if *removeSvc {
-		err := zapret.RemoveService()
+		err := zapret.RemoveService(binDir)
 		if err != nil {
 			fmt.Printf("Ошибка удаления службы: %v\n", err)
 			os.Exit(1)

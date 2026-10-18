@@ -10,14 +10,14 @@ func InstallService(strategyID string, binDir string, listsDir string, gameFilte
 	return nil
 }
 
-func RemoveService() error {
+func RemoveService(binDir string) error {
 	return nil
 }
 
-func StartService() error {
+func StartService(binDir string) error {
 	return nil
 }
 
-func StopService() error {
+func StopService(binDir string) error {
 	return nil
 }

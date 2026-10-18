@@ -10,9 +10,11 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"zapretify/core/logger"
 )
 
-const Version = "1.3.3"
+const Version = "1.3.4"
 const DefaultGithubRepo = "selfdestroyer/Zapretify"
 
 var (
@@ -98,7 +100,7 @@ type ZapretConfig struct {
 	GameFilterMode   string `json:"game_filter_mode"` // "disabled", "udp", "tcp", "all"
 	GameFilterTCP    string `json:"game_filter_tcp"`  // e.g. "1024-65535"
 	GameFilterUDP    string `json:"game_filter_udp"`  // e.g. "1024-65535"
-	IPSetMode        string `json:"ipset_mode"`        // "loaded", "none", "any"
+	IPSetMode        string `json:"ipset_mode"`       // "loaded", "none", "any"
 	AutostartService bool   `json:"autostart_service"`
 	ServiceMode      bool   `json:"service_mode"`
 
@@ -265,6 +267,139 @@ func Get() *Config {
 	return instance
 }
 
+// resetToDefaultsUnlocked replaces all settings with factory defaults, keeping the config path.
+func (c *Config) resetToDefaultsUnlocked() {
+	def := DefaultConfig()
+	c.App = def.App
+	c.Zapret = def.Zapret
+	c.TGProxy = def.TGProxy
+}
+
+func randomSecretHex() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// isValidSecretHex reports whether s is exactly 32 hex characters (16 bytes).
+func isValidSecretHex(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil
+}
+
+// normalizeUnlocked repairs values coming from older versions or hand-edited files so that
+// Validate() passes afterwards. It returns true if anything was changed.
+func (c *Config) normalizeUnlocked() bool {
+	changed := false
+
+	// Zapret: IPSet / GameFilter modes (migration from <= 1.2.2 boolean flags)
+	ipMode := strings.ToLower(strings.TrimSpace(c.Zapret.IPSetMode))
+	switch ipMode {
+	case "loaded", "none", "any":
+	default:
+		if ipMode == "" && c.Zapret.IPSetFilter {
+			ipMode = "loaded"
+		} else {
+			ipMode = "none"
+		}
+	}
+	if c.Zapret.IPSetMode != ipMode {
+		c.Zapret.IPSetMode = ipMode
+		changed = true
+	}
+
+	gfMode := strings.ToLower(strings.TrimSpace(c.Zapret.GameFilterMode))
+	switch gfMode {
+	case "disabled", "udp", "tcp", "all":
+	default:
+		if gfMode == "" && c.Zapret.GameFilter {
+			gfMode = "all"
+		} else {
+			gfMode = "disabled"
+		}
+	}
+	if c.Zapret.GameFilterMode != gfMode {
+		c.Zapret.GameFilterMode = gfMode
+		changed = true
+	}
+
+	if c.Zapret.GameFilterTCP == "" || ValidatePortRange(c.Zapret.GameFilterTCP) != nil {
+		c.Zapret.GameFilterTCP = "1024-65535"
+		changed = true
+	}
+	if c.Zapret.GameFilterUDP == "" || ValidatePortRange(c.Zapret.GameFilterUDP) != nil {
+		c.Zapret.GameFilterUDP = "1024-65535"
+		changed = true
+	}
+	if c.Zapret.Strategy == "" {
+		c.Zapret.Strategy = "general"
+		changed = true
+	}
+
+	// Telegram proxy: port
+	if c.TGProxy.Port < 1024 || c.TGProxy.Port > 65535 {
+		c.TGProxy.Port = 1443
+		changed = true
+	}
+
+	// Telegram proxy: host must be loopback
+	host := strings.ToLower(strings.TrimSpace(c.TGProxy.Host))
+	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+		host = "127.0.0.1"
+	}
+	if c.TGProxy.Host != host {
+		c.TGProxy.Host = host
+		changed = true
+	}
+
+	// Telegram proxy: secret. Strip transport prefix dd/ee only for 34-char values
+	// (2-char prefix + 32 hex chars); anything that is still not 32 hex chars is regenerated.
+	sec := strings.TrimSpace(c.TGProxy.Secret)
+	secLower := strings.ToLower(sec)
+	if len(sec) == 34 && (strings.HasPrefix(secLower, "dd") || strings.HasPrefix(secLower, "ee")) {
+		sec = sec[2:]
+	}
+	if !isValidSecretHex(sec) {
+		sec = randomSecretHex()
+	}
+	if c.TGProxy.Secret != sec {
+		c.TGProxy.Secret = sec
+		changed = true
+	}
+
+	// Cloudflare domains: keep only valid hostnames
+	filter := func(in []string) ([]string, bool) {
+		out := make([]string, 0, len(in))
+		mod := in == nil
+		for _, d := range in {
+			if ValidateDomain(d) == nil {
+				out = append(out, strings.TrimSpace(d))
+			} else {
+				mod = true
+			}
+		}
+		return out, mod
+	}
+	var mod bool
+	if c.TGProxy.CFWorkerDomain, mod = filter(c.TGProxy.CFWorkerDomain); mod {
+		changed = true
+	}
+	if c.TGProxy.CFUserDomain, mod = filter(c.TGProxy.CFUserDomain); mod {
+		changed = true
+	}
+
+	if c.App.GithubRepo != DefaultGithubRepo {
+		c.App.GithubRepo = DefaultGithubRepo
+		changed = true
+	}
+	return changed
+}
+
+// Load reads config.json. Values written by older versions are normalized; a corrupted file is
+// preserved as config.json.bad and replaced by defaults so the application can still start.
 func (c *Config) Load() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -278,100 +413,49 @@ func (c *Config) Load() error {
 	}
 
 	if err := json.Unmarshal(data, c); err != nil {
-		return err
+		// json.Unmarshal may have filled the struct partially: start from clean defaults.
+		bad := c.configPath + ".bad"
+		_ = os.Remove(bad)
+		backupErr := os.Rename(c.configPath, bad)
+		c.resetToDefaultsUnlocked()
+		logger.Log("[Config] config.json повреждён (%v). Используются настройки по умолчанию; копия файла: %s (ошибка копии: %v)", err, bad, backupErr)
+		return c.saveUnlocked()
 	}
 
-	needsSave := false
-
-	// Migration and normalization from v1.2.2 and older configs:
-	if c.Zapret.IPSetMode == "" {
-		if c.Zapret.IPSetFilter {
-			c.Zapret.IPSetMode = "loaded"
-		} else {
-			c.Zapret.IPSetMode = "none"
-		}
-		needsSave = true
-	}
-	if c.Zapret.GameFilterMode == "" {
-		if c.Zapret.GameFilter {
-			c.Zapret.GameFilterMode = "all"
-		} else {
-			c.Zapret.GameFilterMode = "disabled"
-		}
-		needsSave = true
-	}
-	if c.Zapret.GameFilterTCP == "" || ValidatePortRange(c.Zapret.GameFilterTCP) != nil {
-		c.Zapret.GameFilterTCP = "1024-65535"
-		needsSave = true
-	}
-	if c.Zapret.GameFilterUDP == "" || ValidatePortRange(c.Zapret.GameFilterUDP) != nil {
-		c.Zapret.GameFilterUDP = "1024-65535"
-		needsSave = true
-	}
-	if c.Zapret.Strategy == "" {
-		c.Zapret.Strategy = "general"
-		needsSave = true
-	}
-	if c.TGProxy.Port < 1024 || c.TGProxy.Port > 65535 {
-		c.TGProxy.Port = 1443
-		needsSave = true
-	}
-	// Normalize secret with length 34 and dd/ee prefix
-	sec := strings.TrimSpace(c.TGProxy.Secret)
-	secLower := strings.ToLower(sec)
-	if len(sec) == 34 && (strings.HasPrefix(secLower, "dd") || strings.HasPrefix(secLower, "ee")) {
-		c.TGProxy.Secret = sec[2:]
-		needsSave = true
-	}
-	if c.TGProxy.Secret == "" || len(c.TGProxy.Secret) != 32 {
-		newSec := make([]byte, 16)
-		_, _ = rand.Read(newSec)
-		c.TGProxy.Secret = hex.EncodeToString(newSec)
-		needsSave = true
+	if c.normalizeUnlocked() {
+		_ = c.saveUnlocked()
 	}
 
-	// Filter invalid domains
-	var validWorkers []string
-	for _, d := range c.TGProxy.CFWorkerDomain {
-		if ValidateDomain(d) == nil {
-			validWorkers = append(validWorkers, strings.TrimSpace(d))
-		} else {
-			needsSave = true
-		}
-	}
-	c.TGProxy.CFWorkerDomain = validWorkers
-
-	var validUsers []string
-	for _, d := range c.TGProxy.CFUserDomain {
-		if ValidateDomain(d) == nil {
-			validUsers = append(validUsers, strings.TrimSpace(d))
-		} else {
-			needsSave = true
-		}
-	}
-	c.TGProxy.CFUserDomain = validUsers
-
-	if c.App.GithubRepo != DefaultGithubRepo {
-		c.App.GithubRepo = DefaultGithubRepo
-		needsSave = true
-	}
-
-	if needsSave {
+	// Last line of defence: never keep a configuration that Validate() rejects.
+	if err := c.Validate(); err != nil {
+		logger.Log("[Config] Конфигурация не прошла проверку после нормализации (%v). Сброс к значениям по умолчанию.", err)
+		c.resetToDefaultsUnlocked()
 		_ = c.saveUnlocked()
 	}
 
 	return nil
 }
 
+// Update applies fn to a copy of the configuration, validates the result and only then commits it
+// (in memory and on disk). If validation or saving fails, the live configuration is left untouched.
 func (c *Config) Update(fn func(cfg *Config)) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fn(c)
-	c.App.GithubRepo = DefaultGithubRepo
-	if err := c.Validate(); err != nil {
+
+	next := c.cloneUnlocked()
+	fn(next)
+	next.App.GithubRepo = DefaultGithubRepo
+	if err := next.Validate(); err != nil {
 		return err
 	}
-	return c.saveUnlocked()
+
+	prevApp, prevZapret, prevTG := c.App, c.Zapret, c.TGProxy
+	c.App, c.Zapret, c.TGProxy = next.App, next.Zapret, next.TGProxy
+	if err := c.saveUnlocked(); err != nil {
+		c.App, c.Zapret, c.TGProxy = prevApp, prevZapret, prevTG
+		return err
+	}
+	return nil
 }
 
 func (c *Config) Save() error {
@@ -386,7 +470,7 @@ func (c *Config) saveUnlocked() error {
 		return err
 	}
 	tmp := c.configPath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
 		return err
 	}
 	return os.Rename(tmp, c.configPath)
@@ -396,7 +480,10 @@ func (c *Config) saveUnlocked() error {
 func (c *Config) Clone() *Config {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	return c.cloneUnlocked()
+}
 
+func (c *Config) cloneUnlocked() *Config {
 	clone := &Config{
 		App:        c.App,
 		Zapret:     c.Zapret,

@@ -171,7 +171,7 @@ graph TD
 | `POST` | `/api/zapret/stop` | Остановка процесса или службы Zapret |
 | `POST` | `/api/zapret/install-service?strategy=...` | Установка системной службы Windows zapret |
 | `POST` | `/api/zapret/remove-service` | Удаление системной службы Windows zapret |
-| `POST` | `/api/zapret/force-kill` | Аварийный сброс: завершение всех процессов `winws.exe` |
+| `POST` | `/api/zapret/force-kill` | Аварийный сброс: завершение всех процессов `winws.exe` в системе (единственное место глобального `taskkill`) |
 | `POST` | `/api/zapret/reset-drivers` | Полный сброс драйвера ядра WinDivert и связанных служб |
 | `POST` | `/api/zapret/benchmark?strategy=...&method=...&targets=...` | Асинхронный запуск теста одной стратегии (`{"status":"started"}`) |
 | `GET` | `/api/zapret/benchmark/status` | Получение статуса и результатов теста одной стратегии |
@@ -189,7 +189,8 @@ graph TD
 | `POST` | `/api/platform/restart-admin` | Перезапуск приложения с запросом прав администратора |
 | `POST` | `/api/platform/fix-tcp` | Автоматическая оптимизация сетевого стека Windows (TCP Timestamps) |
 | `GET` | `/api/updater/check` | Проверка наличия новой версии приложения на GitHub |
-| `POST` | `/api/updater/assets` | Синхронизация хост-листов и стратегий из upstream Flowseal |
+| `POST` | `/api/updater/assets` | Запуск фоновой синхронизации хост-листов и стратегий из upstream Flowseal (возвращает `{"status":"started"}`) |
+| `GET` | `/api/updater/assets/status` | Статус синхронизации: `running`, `done`, `summary`, `error` |
 | `GET` | `/api/lists?file=...` | Чтение содержимого хост-листа |
 | `POST` | `/api/lists?file=...` | Сохранение хост-листа (белый список разрешенных файлов) |
 | `GET` | `/api/logs` | Чтение последних строк журнала `zapretify.log` |

@@ -502,12 +502,20 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		if !requirePost(w, r) {
 			return
 		}
-		res, err := app.UpdateAssets()
-		if err != nil {
-			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+		// Synchronisation can take much longer than an HTTP request may last, so it runs in the
+		// background and the UI polls /api/updater/assets/status.
+		if err := app.StartAssetSync(); err != nil {
+			badRequest(w, err.Error())
 			return
 		}
-		writeJSON(w, res)
+		writeJSON(w, map[string]string{"status": "started"})
+	})
+
+	mux.HandleFunc("/api/updater/assets/status", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
+		writeJSON(w, app.GetAssetSyncStatus())
 	})
 
 	mux.HandleFunc("/api/lists", func(w http.ResponseWriter, r *http.Request) {

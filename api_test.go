@@ -132,6 +132,7 @@ func TestAPIMethodNotAllowed(t *testing.T) {
 		"/api/tg/ping",
 		"/api/diagnostics",
 		"/api/updater/check",
+		"/api/updater/assets/status",
 		"/api/logs",
 		"/api/debug-report",
 	}
@@ -292,5 +293,47 @@ func TestAPIListsHandling(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 for lists body > 5MB, got %d", rec.Code)
+	}
+}
+
+func TestAPIAssetSyncIsAsync(t *testing.T) {
+	app, mux := setupTestAppAndMux()
+
+	// status endpoint is available and idle at start
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/updater/assets/status", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status: expected 200, got %d", rec.Code)
+	}
+	var st AssetSyncStatus
+	if err := json.NewDecoder(rec.Body).Decode(&st); err != nil || st.Running || st.Done {
+		t.Fatalf("expected idle status, got %+v (%v)", st, err)
+	}
+
+	// a second start while a sync is running is refused instead of queued (no network is touched)
+	app.syncMu.Lock()
+	app.syncStatus.Running = true
+	app.syncMu.Unlock()
+	defer func() {
+		app.syncMu.Lock()
+		app.syncStatus.Running = false
+		app.syncMu.Unlock()
+	}()
+
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/updater/assets", nil))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 while a sync is running, got %d", rec.Code)
+	}
+}
+
+func TestAPIStartUnknownStrategyRejected(t *testing.T) {
+	_, mux := setupTestAppAndMux()
+	for _, id := range []string{"no-such-strategy", "../general", "general%20"} {
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/zapret/start?strategy="+id, nil))
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("strategy %q: expected 400, got %d", id, rec.Code)
+		}
 	}
 }

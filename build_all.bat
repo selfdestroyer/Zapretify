@@ -22,18 +22,18 @@ if %errorlevel% neq 0 (
 echo [OK] Zapretify.exe успешно скомпилирован! (Размер: ~8 МБ)
 echo.
 
-set APP_VERSION=1.3.3
+set APP_VERSION=1.3.4
 
 :: 2. Create Portable ZIP Package
-echo [2/3] Создание Portable ZIP архива...
+echo [2/3] Создание Portable ZIP архива (без config.json: он создаётся при первом запуске)...
 if not exist "dist" mkdir dist
-powershell -NoProfile -Command "Compress-Archive -Path 'Zapretify.exe', 'config.json', 'strategies.json', 'bin', 'lists', 'assets' -DestinationPath 'dist\Zapretify-Portable-v%APP_VERSION%.zip' -Force"
+powershell -NoProfile -Command "Compress-Archive -Path 'Zapretify.exe', 'strategies.json', 'bin', 'lists', 'assets' -DestinationPath 'dist\Zapretify-Portable-v%APP_VERSION%.zip' -Force"
 echo [OK] dist\Zapretify-Portable-v%APP_VERSION%.zip создан!
 echo.
 
 :: 3. Build Windows Installer (Go + WebView2)
 echo [3/3] Сборка инсталлятора Zapretify-Setup...
-powershell -NoProfile -Command "Compress-Archive -Path 'Zapretify.exe', 'config.json', 'strategies.json', 'bin', 'lists', 'assets' -DestinationPath 'cmd\installer\payload.zip' -Force"
+powershell -NoProfile -Command "Compress-Archive -Path 'Zapretify.exe', 'strategies.json', 'bin', 'lists', 'assets' -DestinationPath 'cmd\installer\payload.zip' -Force"
 go build -ldflags="-s -w -H=windowsgui" -o dist\Zapretify-Setup-v%APP_VERSION%.exe .\cmd\installer
 if %errorlevel% equ 0 (
     echo [OK] dist\Zapretify-Setup-v%APP_VERSION%.exe успешно создан!

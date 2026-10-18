@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -112,6 +113,57 @@ func formatStrategyName(id string) string {
 	return id
 }
 
+const (
+	maxListBytes  = 8 << 20 // host lists / ipsets
+	maxBatchBytes = 256 << 10
+)
+
+// fetchLimited downloads a URL and refuses non-200 answers, empty bodies and bodies over the limit.
+func fetchLimited(client *http.Client, rawURL string, limit int64) ([]byte, error) {
+	resp, err := client.Get(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("response larger than %d bytes", limit)
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, fmt.Errorf("empty response")
+	}
+	return body, nil
+}
+
+// validRawArgs rejects argument chains that contain control characters or newlines.
+func validRawArgs(args string) bool {
+	for _, r := range args {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// writeFileAtomic writes data next to the target and renames it into place.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp := path + ".download"
+	if err := os.WriteFile(tmp, data, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
 func discoverStrategyBatchFiles(client *http.Client) []string {
 	req, err := http.NewRequest("GET", "https://api.github.com/repos/Flowseal/zapret-discord-youtube/contents/", nil)
 	if err == nil {
@@ -154,38 +206,19 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 
 	_ = os.MkdirAll(listsDir, 0755)
 
-	// 1. Sync host lists
+	// 1. Sync host lists (user-owned *-user.txt files are never part of UpstreamAssetURLs)
 	for filename, fileURL := range UpstreamAssetURLs {
-		resp, err := client.Get(fileURL)
-		if err != nil || resp.StatusCode != http.StatusOK {
-			summary.FailedFiles = append(summary.FailedFiles, filename)
-			if resp != nil {
-				_ = resp.Body.Close()
-			}
-			continue
-		}
-
-		targetPath := filepath.Join(listsDir, filename)
-		tmpPath := targetPath + ".download"
-
-		out, err := os.Create(tmpPath)
+		body, err := fetchLimited(client, fileURL, maxListBytes)
 		if err != nil {
-			_ = resp.Body.Close()
+			logger.Log("[Updater] %s: %v", filename, err)
 			summary.FailedFiles = append(summary.FailedFiles, filename)
 			continue
 		}
-
-		_, err = io.Copy(out, resp.Body)
-		_ = out.Close()
-		_ = resp.Body.Close()
-
-		if err != nil {
-			_ = os.Remove(tmpPath)
+		if err := writeFileAtomic(filepath.Join(listsDir, filename), body, 0644); err != nil {
+			logger.Log("[Updater] %s: %v", filename, err)
 			summary.FailedFiles = append(summary.FailedFiles, filename)
 			continue
 		}
-
-		_ = os.Rename(tmpPath, targetPath)
 		summary.UpdatedFiles = append(summary.UpdatedFiles, filename)
 	}
 
@@ -207,19 +240,7 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 			defer func() { <-sem }()
 
 			rawURL := "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/" + url.PathEscape(filename)
-			resp, err := client.Get(rawURL)
-			if err != nil || resp.StatusCode != http.StatusOK {
-				if resp != nil {
-					_ = resp.Body.Close()
-				}
-				stratMu.Lock()
-				summary.FailedFiles = append(summary.FailedFiles, filename)
-				stratMu.Unlock()
-				return
-			}
-
-			bodyBytes, err := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
+			bodyBytes, err := fetchLimited(client, rawURL, maxBatchBytes)
 			if err != nil {
 				stratMu.Lock()
 				summary.FailedFiles = append(summary.FailedFiles, filename)
@@ -228,7 +249,7 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 			}
 
 			parsedArgs := ParseBatRawArgs(string(bodyBytes))
-			if parsedArgs != "" && strings.Contains(parsedArgs, "--wf-") {
+			if parsedArgs != "" && strings.Contains(parsedArgs, "--wf-") && validRawArgs(parsedArgs) {
 				id := strings.TrimSuffix(filename, ".bat")
 				stratMu.Lock()
 				parsedResults[id] = parsedArgs
@@ -241,17 +262,12 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 	// 3. Update strategies.json
 	if len(parsedResults) > 0 {
 		strategiesPath := filepath.Join(appDir, "strategies.json")
-		data, err := os.ReadFile(strategiesPath)
-		if err != nil {
-			data, err = os.ReadFile("strategies.json")
-			if err == nil {
-				strategiesPath = "strategies.json"
-			}
-		}
-
 		var fileData StrategiesData
-		if err == nil {
-			_ = json.Unmarshal(data, &fileData)
+		if data, err := os.ReadFile(strategiesPath); err == nil {
+			if err := json.Unmarshal(data, &fileData); err != nil {
+				logger.Log("[Updater] strategies.json повреждён (%v), будет пересоздан.", err)
+				fileData = StrategiesData{}
+			}
 		}
 		if fileData.Version == "" {
 			fileData.Version = "1.10.3"
@@ -278,16 +294,13 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 
 		outJSON, err := json.MarshalIndent(fileData, "", "  ")
 		if err == nil {
-			tmpFile := strategiesPath + ".tmp"
-			if err := os.WriteFile(tmpFile, outJSON, 0644); err == nil {
-				_ = os.Rename(tmpFile, strategiesPath)
-				summary.UpdatedFiles = append(summary.UpdatedFiles, "strategies.json")
-				if appDir != "" && appDir != "." {
-					if _, err := os.Stat("strategies.json"); err == nil {
-						_ = os.WriteFile("strategies.json", outJSON, 0644)
-					}
-				}
-			}
+			err = writeFileAtomic(strategiesPath, outJSON, 0644)
+		}
+		if err != nil {
+			logger.Log("[Updater] Не удалось сохранить strategies.json: %v", err)
+			summary.FailedFiles = append(summary.FailedFiles, "strategies.json")
+		} else {
+			summary.UpdatedFiles = append(summary.UpdatedFiles, "strategies.json")
 		}
 	}
 

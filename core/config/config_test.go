@@ -245,3 +245,95 @@ func TestConfigUpdate(t *testing.T) {
 	}
 }
 
+func TestUpdateRollsBackOnValidationError(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.configPath = t.TempDir() + "/config.json"
+
+	if err := cfg.Update(func(c *Config) { c.TGProxy.Port = 99999 }); err == nil {
+		t.Fatalf("expected validation error")
+	}
+	if cfg.TGProxy.Port != 1443 {
+		t.Fatalf("live config must not keep rejected value, got port %d", cfg.TGProxy.Port)
+	}
+	// A following valid update must not be poisoned by the previous failed one.
+	if err := cfg.Update(func(c *Config) { c.Zapret.Strategy = "alt2" }); err != nil {
+		t.Fatalf("valid update after a failed one must succeed: %v", err)
+	}
+}
+
+func TestUpdateRollsBackOnSaveError(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.configPath = t.TempDir() + "/missing-dir/config.json" // directory does not exist -> save fails
+
+	if err := cfg.Update(func(c *Config) { c.Zapret.Strategy = "alt3" }); err == nil {
+		t.Fatalf("expected save error")
+	}
+	if cfg.Zapret.Strategy == "alt3" {
+		t.Fatalf("in-memory config must be rolled back when saving fails")
+	}
+}
+
+func TestLoadNormalizesInvalidValuesSoUpdateKeepsWorking(t *testing.T) {
+	dir := t.TempDir()
+	raw := []byte(`{
+		"zapret": {"strategy": "general", "ipset_mode": "BOGUS", "game_filter_mode": "weird"},
+		"tg_proxy": {"host": "0.0.0.0", "port": 1443, "secret": "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+			"cf_worker_domain": ["ok.example.com", "http://bad/"]}
+	}`)
+	cfg := &Config{configPath: dir + "/config.json"}
+	if err := os.WriteFile(cfg.configPath, raw, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("normalized config must validate: %v", err)
+	}
+	if cfg.TGProxy.Host != "127.0.0.1" {
+		t.Errorf("non-loopback host must be reset, got %q", cfg.TGProxy.Host)
+	}
+	if !isValidSecretHex(cfg.TGProxy.Secret) {
+		t.Errorf("non-hex secret must be regenerated, got %q", cfg.TGProxy.Secret)
+	}
+	if len(cfg.TGProxy.CFWorkerDomain) != 1 || cfg.TGProxy.CFWorkerDomain[0] != "ok.example.com" {
+		t.Errorf("invalid cloudflare domains must be dropped, got %v", cfg.TGProxy.CFWorkerDomain)
+	}
+	if err := cfg.Update(func(c *Config) { c.TGProxy.Port = 2000 }); err != nil {
+		t.Fatalf("Update after normalization must succeed: %v", err)
+	}
+}
+
+func TestLoadKeepsSecretStartingWithDD(t *testing.T) {
+	dir := t.TempDir()
+	// A genuine 32-char secret that merely starts with "dd" must stay intact.
+	sec := "dd23456789abcdef0123456789abcdef"
+	raw := []byte(`{"tg_proxy": {"host": "127.0.0.1", "port": 1443, "secret": "` + sec + `"}}`)
+	cfg := &Config{configPath: dir + "/config.json"}
+	if err := os.WriteFile(cfg.configPath, raw, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.TGProxy.Secret != sec {
+		t.Fatalf("secret was modified: %q", cfg.TGProxy.Secret)
+	}
+}
+
+func TestLoadCorruptedConfigIsBackedUp(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{configPath: dir + "/config.json"}
+	if err := os.WriteFile(cfg.configPath, []byte(`{"app": {"theme": "dark"`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Load must recover from a corrupted file: %v", err)
+	}
+	if _, err := os.Stat(cfg.configPath + ".bad"); err != nil {
+		t.Fatalf("corrupted config must be preserved as .bad: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("recovered config must be valid: %v", err)
+	}
+}

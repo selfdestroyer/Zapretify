@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	"time"
 
 	"zapretify/core/logger"
-	"zapretify/core/platform"
 )
 
 type TargetEndpoint struct {
@@ -556,7 +554,16 @@ func SaveAutoBenchmarkReport(filePath string, st AutoBenchmarkStatus) error {
 	return os.WriteFile(filePath, []byte(sb.String()), 0644)
 }
 
-func StartAutoBenchmark(binDir, listsDir, gameFilterMode, gameTCP, gameUDP, method, targetGroup, appDir string) error {
+// StartAutoBenchmark tests every strategy one after another in the background.
+// runner/registry are the instances owned by the application; onFinish (optional) is called after
+// the benchmark has ended (normally or by cancellation) and winws.exe has been stopped.
+func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDir, listsDir, gameFilterMode, gameTCP, gameUDP, method, targetGroup, appDir string, onFinish func()) error {
+	if runner == nil {
+		runner = GetRunner()
+	}
+	if registry == nil {
+		registry = GetRegistry()
+	}
 	autoBenchMu.Lock()
 	if autoBenchStatus.Running {
 		autoBenchMu.Unlock()
@@ -573,12 +580,11 @@ func StartAutoBenchmark(binDir, listsDir, gameFilterMode, gameTCP, gameUDP, meth
 	logger.Log("[AutoBenchmark] Подготовка к автоматическому тестированию стратегий (метод: %s, цели: %s)...", method, targetGroup)
 
 	// Обязательно останавливаем активный zapret перед авто-бенчмарком
-	_ = GetRunner().Stop()
-	_ = StopService()
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T").Run()
+	_ = runner.Stop()
+	_ = StopService(binDir)
 	time.Sleep(300 * time.Millisecond)
 
-	strategies := GetRegistry().List()
+	strategies := registry.List()
 	logger.Log("[AutoBenchmark] Загружено %d стратегий Flowseal для тестирования", len(strategies))
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -606,8 +612,8 @@ func StartAutoBenchmark(binDir, listsDir, gameFilterMode, gameTCP, gameUDP, meth
 			autoBenchCancel = nil
 			currentStatus := autoBenchStatus
 			autoBenchMu.Unlock()
-			_ = GetRunner().Stop()
-			_ = platform.RunHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
+			_ = runner.Stop()
+			_ = StopService(binDir)
 
 			if appDir != "" && len(currentStatus.Leaderboard) > 0 {
 				reportPath := filepath.Join(appDir, "test_results.txt")
@@ -618,7 +624,12 @@ func StartAutoBenchmark(binDir, listsDir, gameFilterMode, gameTCP, gameUDP, meth
 				}
 			}
 			logger.Log("[AutoBenchmark] Тестирование всех стратегий завершено!")
+			if onFinish != nil {
+				onFinish()
+			}
 		}()
+
+		consecutiveStartFailures := 0
 
 		var scores []StrategyScore
 		testTargets := GetTargetsByGroup(targetGroup)
@@ -639,14 +650,28 @@ func StartAutoBenchmark(binDir, listsDir, gameFilterMode, gameTCP, gameUDP, meth
 			autoBenchStatus.CurrentStrategy = strat.Name
 			autoBenchMu.Unlock()
 
-			// Запускаем проверяемую стратегию
-			_ = GetRunner().Start(strat.ID, binDir, listsDir, gameFilterMode, gameTCP, gameUDP)
-			time.Sleep(700 * time.Millisecond)
-
-			// Выполняем проверку целей
-			targets := CheckAllTargets(testTargets, method, 2000*time.Millisecond)
-			_ = GetRunner().Stop()
-			_ = exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T").Run()
+			// Запускаем проверяемую стратегию. Если winws не стартовал, результат теста был бы
+			// измерен БЕЗ обхода блокировок и ввёл бы в заблуждение, поэтому такая стратегия
+			// получает 0 и в журнал пишется причина.
+			var targets []TargetResult
+			if startErr := runner.Start(strat.ID, binDir, listsDir, gameFilterMode, gameTCP, gameUDP); startErr != nil {
+				consecutiveStartFailures++
+				logger.Log("[AutoBenchmark] Не удалось запустить стратегию %s: %v", strat.Name, startErr)
+				if consecutiveStartFailures >= 3 && len(scores) == 0 {
+					autoBenchMu.Lock()
+					autoBenchStatus.Error = fmt.Sprintf("winws.exe не запускается (3 попытки подряд): %v. Проверьте права администратора, наличие файлов в bin/ и конфликт с другими программами на WinDivert (GoodbyeDPI и др.).", startErr)
+					autoBenchMu.Unlock()
+					return
+				}
+				for _, t := range testTargets {
+					targets = append(targets, TargetResult{Name: t.Name, URL: t.URL, Host: t.Host, Category: t.Category, Success: false, LatencyMs: -1, DPIStatus: "error", DPIMessage: "winws не запустился: " + startErr.Error()})
+				}
+			} else {
+				consecutiveStartFailures = 0
+				// Выполняем проверку целей
+				targets = CheckAllTargets(testTargets, method, 2000*time.Millisecond)
+				_ = runner.Stop()
+			}
 
 			successes := 0
 			var totalLat float64

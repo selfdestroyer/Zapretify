@@ -7,11 +7,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
+
+	"zapretify/core/logger"
+	"zapretify/core/platform"
 )
 
 const (
@@ -60,7 +62,9 @@ func GetServiceStatus() (string, string, error) {
 }
 
 func getServiceStatusFallback(stratName string) (string, string, error) {
-	out, _ := exec.Command("cmd.exe", "/c", "sc query "+ServiceName).CombinedOutput()
+	fallbackCmd := exec.Command("sc", "query", ServiceName)
+	platform.HideWindow(fallbackCmd)
+	out, _ := fallbackCmd.CombinedOutput()
 	outStr := string(out)
 
 	if strings.Contains(outStr, "1060") || strings.Contains(strings.ToLower(outStr), "not exist") {
@@ -97,11 +101,11 @@ func InstallService(
 		return fmt.Errorf("ошибка создания файлов списков: %v", err)
 	}
 
-	// 2. Terminate any previous stuck instances
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F").Run()
+	// 2. Terminate previous stuck instances of OUR winws.exe only (never other tools' processes)
+	platform.KillImageInDir("winws.exe", binDir)
 
 	// 3. Enable TCP timestamps
-	_ = exec.Command("netsh", "interface", "tcp", "set", "global", "timestamps=enabled").Run()
+	_ = platform.RunHidden("netsh", "interface", "tcp", "set", "global", "timestamps=enabled")
 
 	// 4. Construct ImagePath command line
 	rawArgs := buildProcessedRawArgs(strat.RawArgs, binDir, listsDir, gameFilterMode, gameTCPRange, gameUDPRange)
@@ -191,8 +195,8 @@ func InstallService(
 	return nil
 }
 
-func RemoveService() error {
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F").Run()
+func RemoveService(binDir string) error {
+	platform.KillImageInDir("winws.exe", binDir)
 
 	hSCM, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_ALL_ACCESS)
 	if err == nil {
@@ -207,16 +211,16 @@ func RemoveService() error {
 		windows.CloseServiceHandle(hSCM)
 	}
 
-	_ = exec.Command("net", "stop", "WinDivert").Run()
-	_ = exec.Command("sc", "delete", "WinDivert").Run()
-	_ = exec.Command("net", "stop", "WinDivert14").Run()
-	_ = exec.Command("sc", "delete", "WinDivert14").Run()
+	_ = platform.RunHidden("net", "stop", "WinDivert")
+	_ = platform.RunHidden("sc", "delete", "WinDivert")
+	_ = platform.RunHidden("net", "stop", "WinDivert14")
+	_ = platform.RunHidden("sc", "delete", "WinDivert14")
 	time.Sleep(300 * time.Millisecond)
 	return nil
 }
 
-func StartService() error {
-	_ = exec.Command("taskkill", "/IM", "winws.exe", "/F").Run()
+func StartService(binDir string) error {
+	platform.KillImageInDir("winws.exe", binDir)
 
 	hSCM, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err != nil {
@@ -231,7 +235,7 @@ func StartService() error {
 	}
 	defer windows.CloseServiceHandle(hService)
 
-	_ = exec.Command("netsh", "interface", "tcp", "set", "global", "timestamps=enabled").Run()
+	_ = platform.RunHidden("netsh", "interface", "tcp", "set", "global", "timestamps=enabled")
 
 	err = windows.StartService(hService, 0, nil)
 	if err != nil && err != windows.ERROR_SERVICE_ALREADY_RUNNING {
@@ -254,25 +258,27 @@ func StartService() error {
 	return nil
 }
 
-func StopService() error {
-	cmd1 := exec.Command("net", "stop", ServiceName)
-	cmd1.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	_ = cmd1.Run()
-
-	cmd2 := exec.Command("taskkill", "/IM", "winws.exe", "/F", "/T")
-	cmd2.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	_ = cmd2.Run()
-
+// StopService stops the "zapret" Windows service and the winws.exe it launched.
+// winws.exe is not a real service executable and does not answer service control requests,
+// so after asking SCM to stop the service we terminate the winws.exe processes located in binDir.
+// Processes of the same name started from other folders (other tools) are never touched.
+func StopService(binDir string) error {
 	hSCM, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
 	if err == nil {
 		serviceNamePtr, _ := windows.UTF16PtrFromString(ServiceName)
 		hService, err := windows.OpenService(hSCM, serviceNamePtr, windows.SERVICE_STOP|windows.SERVICE_QUERY_STATUS)
 		if err == nil {
 			var status windows.SERVICE_STATUS
-			_ = windows.ControlService(hService, windows.SERVICE_CONTROL_STOP, &status)
+			if err := windows.QueryServiceStatus(hService, &status); err == nil && status.CurrentState != windows.SERVICE_STOPPED {
+				_ = windows.ControlService(hService, windows.SERVICE_CONTROL_STOP, &status)
+			}
 			windows.CloseServiceHandle(hService)
 		}
 		windows.CloseServiceHandle(hSCM)
+	}
+
+	if n := platform.KillImageInDir("winws.exe", binDir); n > 0 {
+		logger.Log("[Zapret] Завершено процессов winws.exe из %s: %d", binDir, n)
 	}
 	time.Sleep(200 * time.Millisecond)
 	return nil

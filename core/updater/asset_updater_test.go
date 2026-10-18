@@ -1,6 +1,8 @@
 package updater
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,6 +36,12 @@ func TestFormatStrategyName(t *testing.T) {
 }
 
 func TestLiveSync(t *testing.T) {
+	if testing.Short() {
+		t.Skip("network test skipped in -short mode")
+	}
+	if os.Getenv("ZAPRETIFY_LIVE_TESTS") == "" {
+		t.Skip("set ZAPRETIFY_LIVE_TESTS=1 to run the live upstream sync test")
+	}
 	tmpDir, err := os.MkdirTemp("", "zapretify-test-*")
 	if err != nil {
 		t.Fatal(err)
@@ -64,5 +72,39 @@ func TestLiveSync(t *testing.T) {
 	fi, err := os.Stat(stratPath)
 	if err != nil || fi.Size() == 0 {
 		t.Errorf("strategies.json was not created or is empty")
+	}
+}
+
+func TestFetchLimited(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ok":
+			_, _ = w.Write([]byte("example.com\n"))
+		case "/empty":
+			_, _ = w.Write([]byte("  \n"))
+		case "/big":
+			_, _ = w.Write(make([]byte, 2048))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	if _, err := fetchLimited(srv.Client(), srv.URL+"/ok", 1024); err != nil {
+		t.Fatalf("ok: %v", err)
+	}
+	for _, p := range []string{"/empty", "/big", "/missing"} {
+		if _, err := fetchLimited(srv.Client(), srv.URL+p, 1024); err == nil {
+			t.Fatalf("%s must be rejected", p)
+		}
+	}
+}
+
+func TestValidRawArgs(t *testing.T) {
+	if !validRawArgs(`--wf-tcp=80,443 --hostlist="%LISTS%x.txt"`) {
+		t.Fatal("normal args rejected")
+	}
+	if validRawArgs("--wf-tcp=80\n--evil") {
+		t.Fatal("newline must be rejected")
 	}
 }

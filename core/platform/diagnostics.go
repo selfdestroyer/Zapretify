@@ -3,7 +3,6 @@ package platform
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -34,14 +33,14 @@ func RunDiagnostics(binDir string) DiagnosticReport {
 		}
 
 		// Check GoodbyeDPI
-		out, err := exec.Command("tasklist", "/FI", "IMAGENAME eq goodbyedpi.exe").Output()
+		out, err := OutputHidden("tasklist", "/FI", "IMAGENAME eq goodbyedpi.exe")
 		if err == nil && strings.Contains(strings.ToLower(string(out)), "goodbyedpi.exe") {
 			report.GoodbyeDPIRun = true
 			report.OverallStatus = "ERROR"
 		}
 
 		// Check TCP timestamps (supports English & Russian Windows)
-		tsOut, err := exec.Command("netsh", "interface", "tcp", "show", "global").CombinedOutput()
+		tsOut, err := OutputHidden("netsh", "interface", "tcp", "show", "global")
 		if err == nil {
 			lines := strings.Split(string(tsOut), "\n")
 			found := false
@@ -76,7 +75,7 @@ func RunDiagnostics(binDir string) DiagnosticReport {
 
 func FixTCPTimestamps() error {
 	if runtime.GOOS == "windows" {
-		out, err := exec.Command("netsh", "interface", "tcp", "set", "global", "timestamps=enabled").CombinedOutput()
+		out, err := OutputHidden("netsh", "interface", "tcp", "set", "global", "timestamps=enabled")
 		if err != nil {
 			return fmt.Errorf("ошибка netsh: %s (%v)", strings.TrimSpace(string(out)), err)
 		}

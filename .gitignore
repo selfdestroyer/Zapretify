@@ -29,3 +29,7 @@ Thumbs.db
 !bin/*.sys
 !bin/*.exe
 !bin/*.bin
+
+# Local user config (generated on first run; contains Telegram proxy secret)
+/config.json
+config.json.bad

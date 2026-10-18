@@ -359,7 +359,7 @@
   <div class="header">
     <img src="logo.png" alt="Zapretify" class="logo-img">
     <div class="header-text">
-      <h1>Zapretify <span id="hdr-badge" class="badge">v1.3.3 Setup</span></h1>
+      <h1>Zapretify <span id="hdr-badge" class="badge">v1.3.4 Setup</span></h1>
       <p id="hdr-subtitle">Мастер установки • Симбиоз zapret и tg-ws-proxy</p>
     </div>
   </div>
@@ -532,7 +532,33 @@
         is_upgrade: isUpgrade
       };
 
-      // Start listening to progress
+      const backToOptions = () => {
+        document.getElementById('step-progress').classList.remove('active');
+        document.getElementById('step-options').classList.add('active');
+      };
+
+      // Start the installation first: the server validates the path and may refuse the request
+      try {
+        const res = await fetch('/api/install', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          let msg = 'Не удалось запустить установку.';
+          try { msg = (await res.json()).error || msg; } catch (_) {}
+          alert(msg);
+          backToOptions();
+          return;
+        }
+      } catch (e) {
+        console.error('Install start failed:', e);
+        alert('Не удалось связаться с установщиком. Перезапустите его.');
+        backToOptions();
+        return;
+      }
+
+      // Listen to progress
       const pollTimer = setInterval(async () => {
         try {
           const res = await fetch('/api/progress');
@@ -541,32 +567,26 @@
           document.getElementById('prog-status').innerText = data.status || 'Установка компонентов...';
           document.getElementById('prog-detail').innerText = data.detail || '';
 
-          if (data.complete) {
+          if (data.error) {
             clearInterval(pollTimer);
+            alert('Ошибка установки: ' + data.error);
+            backToOptions();
+          } else if (data.complete) {
+            clearInterval(pollTimer);
+            if (data.warnings && data.warnings.length) {
+              const el = document.getElementById('complete-desc');
+              el.innerText = el.innerText + '\n\nПредупреждения:\n• ' + data.warnings.join('\n• ');
+              el.style.whiteSpace = 'pre-line';
+            }
             setTimeout(() => {
               document.getElementById('step-progress').classList.remove('active');
               document.getElementById('step-complete').classList.add('active');
             }, 500);
-          } else if (data.error) {
-            clearInterval(pollTimer);
-            alert('Ошибка установки: ' + data.error);
-            document.getElementById('step-progress').classList.remove('active');
-            document.getElementById('step-options').classList.add('active');
           }
         } catch (e) {
           console.error(e);
         }
-      }, 200);
-
-      try {
-        await fetch('/api/install', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-      } catch (e) {
-        console.error('Install start failed:', e);
-      }
+      }, 300);
     }
 
     async function finishSetup() {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -45,6 +46,24 @@ type App struct {
 
 	benchMu     sync.RWMutex
 	benchStatus SingleBenchmarkStatus
+
+	syncMu     sync.RWMutex
+	syncStatus AssetSyncStatus
+}
+
+// AssetSyncStatus describes the background synchronisation of host lists and strategies.
+type AssetSyncStatus struct {
+	Running bool                        `json:"running"`
+	Done    bool                        `json:"done"`
+	Summary *updater.AssetUpdateSummary `json:"summary,omitempty"`
+	Error   string                      `json:"error,omitempty"`
+}
+
+// zapretState remembers what was running before a benchmark so it can be restored afterwards.
+type zapretState struct {
+	serviceRunning bool
+	procRunning    bool
+	strategy       string
 }
 
 func NewApp() *App {
@@ -87,15 +106,37 @@ func (a *App) startup(ctx context.Context) {
 	// Autostart services ONLY if explicitly configured by user
 	cfg := a.cfg.Clone()
 	if cfg.TGProxy.Autostart {
-		_ = a.StartTGProxy()
+		if err := a.StartTGProxy(); err != nil {
+			logger.Log("[App] Автозапуск Telegram прокси не удался: %v", err)
+		}
 	}
 	if cfg.Zapret.AutostartService && cfg.Zapret.ServiceMode {
-		_ = a.StartZapret(cfg.Zapret.Strategy)
+		if err := a.StartZapret(cfg.Zapret.Strategy); err != nil {
+			logger.Log("[App] Автозапуск Zapret не удался: %v", err)
+		}
 	}
+
+	// The real autostart registration (scheduled task / Run key) may have been created by the
+	// installer or removed manually: make the stored setting reflect reality.
+	go a.reconcileAutostart()
+
 	go func() {
 		time.Sleep(500 * time.Millisecond)
 		TriggerTrayUpdate()
 	}()
+}
+
+func (a *App) reconcileAutostart() {
+	// One-way sync only: if autostart is registered in the system but the setting says "off"
+	// (installer option), switch the setting on. A failed query as a non-elevated user must never
+	// switch a user's choice off.
+	if a.cfg.Clone().App.AutostartApp || !config.IsAppAutostart() {
+		return
+	}
+	logger.Log("[App] В системе найден автозапуск Zapretify (создан установщиком); настройка синхронизирована.")
+	if err := a.cfg.Update(func(c *config.Config) { c.App.AutostartApp = true }); err != nil {
+		logger.Log("[App] Не удалось сохранить состояние автозапуска: %v", err)
+	}
 }
 
 // Config
@@ -104,8 +145,12 @@ func (a *App) GetConfig() *config.Config {
 }
 
 func (a *App) SaveConfig(cfg *config.Config) error {
-	if err := config.SetAppAutostart(cfg.App.AutostartApp); err != nil {
-		return fmt.Errorf("автозапуск: %w", err)
+	// Register/unregister autostart only when the user actually changed it. Doing it on every save
+	// would silently undo an autostart created outside of the application (e.g. by the installer).
+	if cfg.App.AutostartApp != a.cfg.Clone().App.AutostartApp {
+		if err := config.SetAppAutostart(cfg.App.AutostartApp); err != nil {
+			return fmt.Errorf("автозапуск: %w", err)
+		}
 	}
 	return a.cfg.Update(func(c *config.Config) {
 		c.App = cfg.App
@@ -165,9 +210,22 @@ func (a *App) IsZapretRunning() bool {
 }
 
 func (a *App) StartZapret(strategyID string) error {
+	if a.isBenchmarkRunning() {
+		return fmt.Errorf("идёт тестирование стратегий — дождитесь его завершения")
+	}
+
 	cfg := a.cfg.Clone()
 	if strategyID == "" {
 		strategyID = cfg.Zapret.Strategy
+		// A stale/unknown strategy ID in config.json must not prevent starting.
+		if a.registry != nil {
+			if _, ok := a.registry.Find(strategyID); !ok {
+				if def, ok := a.registry.Default(); ok {
+					logger.Log("[Zapret] Стратегия '%s' из конфигурации не найдена. Используется '%s'.", strategyID, def.ID)
+					strategyID = def.ID
+				}
+			}
+		}
 	}
 
 	logger.Log("[Zapret] Запуск стратегии '%s' (service_mode=%v)...", strategyID, cfg.Zapret.ServiceMode)
@@ -181,14 +239,29 @@ func (a *App) StartZapret(strategyID string) error {
 	}
 
 	if cfg.Zapret.ServiceMode {
-		status, _, _ := zapret.GetServiceStatus()
+		status, installedStrategy, _ := zapret.GetServiceStatus()
 		logger.Log("[Zapret] Текущее состояние службы SCM: %s", status)
+
+		// The service has its strategy baked into its command line. If another strategy was
+		// requested, the service must be reinstalled, otherwise the choice would be silently ignored.
+		if (status == "RUNNING" || status == "STOPPED") && a.registry != nil && platform.IsAdmin() {
+			if strat, ok := a.registry.Find(strategyID); ok && installedStrategy != "" && installedStrategy != strat.Name {
+				logger.Log("[Zapret] Служба установлена со стратегией '%s', запрошена '%s'. Переустановка службы...", installedStrategy, strat.Name)
+				if err := zapret.InstallService(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP); err == nil {
+					logger.Log("[Zapret] Служба переустановлена с новой стратегией.")
+					return nil
+				} else {
+					logger.Log("[Zapret] Не удалось переустановить службу: %v", err)
+				}
+			}
+		}
+
 		if status == "RUNNING" {
 			logger.Log("[Zapret] Служба уже активна.")
 			return nil
 		}
 		if status == "STOPPED" {
-			err := zapret.StartService()
+			err := zapret.StartService(a.binDir)
 			if err == nil {
 				logger.Log("[Zapret] Служба Windows SCM успешно запущена.")
 				return nil
@@ -232,29 +305,39 @@ func (a *App) StopZapret() error {
 	if a.runner != nil {
 		_ = a.runner.Stop()
 	}
-	_ = zapret.StopService()
+	_ = zapret.StopService(a.binDir)
 	time.Sleep(200 * time.Millisecond)
 	logger.Log("[Zapret] Остановка завершена.")
 	return nil
 }
 
+// isNoSuchProcess reports whether a failed "taskkill" only means that there was nothing to kill.
+func isNoSuchProcess(err error) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == 128
+}
+
+// ForceKillZapret is the explicit "emergency reset" button: unlike the regular Stop it terminates
+// EVERY winws.exe in the system (the user asked for a full reset), so the UI asks for confirmation.
 func (a *App) ForceKillZapret() error {
-	logger.Log("[Zapret] Аварийный сброс: Kill winws.exe...")
-	var errRunner error
+	logger.Log("[Zapret] Аварийный сброс: завершение всех процессов winws.exe...")
+	var errs []error
 	if a.runner != nil {
-		errRunner = a.runner.Stop()
+		if err := a.runner.Stop(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	errSvc := zapret.StopService()
-	errKill := runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
+	if err := zapret.StopService(a.binDir); err != nil {
+		errs = append(errs, err)
+	}
+	if runtime.GOOS == "windows" {
+		if err := runHidden("taskkill", "/IM", "winws.exe", "/F", "/T"); err != nil && !isNoSuchProcess(err) {
+			errs = append(errs, fmt.Errorf("taskkill: %w", err))
+		}
+	}
 	time.Sleep(200 * time.Millisecond)
-	logger.Log("[Zapret] Все процессы winws.exe принудительно завершены.")
-	if errRunner != nil {
-		return errRunner
-	}
-	if errSvc != nil {
-		return errSvc
-	}
-	return errKill
+	logger.Log("[Zapret] Аварийный сброс завершен.")
+	return errors.Join(errs...)
 }
 
 // Shutdown гарантированно и полностью останавливает Zapret, WinDivert, Telegram Proxy и все зависимости
@@ -283,7 +366,7 @@ func (a *App) Shutdown() {
 
 		// 3. Остановка системной службы Windows zapret (если активна)
 		logger.Log("[App] Остановка системной службы Windows zapret...")
-		_ = zapret.StopService()
+		_ = zapret.StopService(a.binDir)
 
 		// 4. Остановка Telegram Proxy
 		logger.Log("[App] Остановка Telegram прокси...")
@@ -310,19 +393,23 @@ func (a *App) ForceExitAll() error {
 
 func (a *App) ResetDrivers() error {
 	logger.Log("[Zapret] Полный сброс служб и драйвера WinDivert...")
-	_ = a.ForceKillZapret()
-	_ = zapret.RemoveService()
+	killErr := a.ForceKillZapret()
+	_ = zapret.RemoveService(a.binDir)
+	// "not loaded"/"not installed" are normal results here, so errors of these commands are ignored.
 	_ = runHidden("net", "stop", "WinDivert")
 	_ = runHidden("sc", "delete", "WinDivert")
 	_ = runHidden("net", "stop", "WinDivert14")
 	_ = runHidden("sc", "delete", "WinDivert14")
 	time.Sleep(400 * time.Millisecond)
 	logger.Log("[Zapret] Сброс WinDivert завершен.")
-	return nil
+	return killErr
 }
 
 func (a *App) InstallZapretService(strategyID string) error {
 	cfg := a.cfg.Clone()
+	if strategyID == "" {
+		strategyID = cfg.Zapret.Strategy
+	}
 	_ = zapret.SetIPSetMode(a.listsDir, cfg.Zapret.IPSetMode)
 	if !platform.IsAdmin() {
 		return platform.RunAsAdmin("--install-service", strategyID)
@@ -334,7 +421,7 @@ func (a *App) RemoveZapretService() error {
 	if !platform.IsAdmin() {
 		return platform.RunAsAdmin("--remove-service")
 	}
-	return zapret.RemoveService()
+	return zapret.RemoveService(a.binDir)
 }
 
 // Telegram Proxy
@@ -398,7 +485,45 @@ func (a *App) PingTelegramDCs() map[string]float64 {
 }
 
 // Tester & Diagnostics
-func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup string) zapret.BenchmarkResult {
+
+// isBenchmarkRunning reports whether any strategy test (single or all strategies) is in progress.
+func (a *App) isBenchmarkRunning() bool {
+	a.benchMu.RLock()
+	single := a.benchStatus.Running
+	a.benchMu.RUnlock()
+	return single || zapret.GetAutoBenchmarkStatus().Running
+}
+
+// snapshotZapretState records what is currently running so that it can be restored after a benchmark.
+func (a *App) snapshotZapretState() zapretState {
+	st := zapretState{}
+	svcState, _, _ := zapret.GetServiceStatus()
+	st.serviceRunning = svcState == "RUNNING"
+	if a.runner != nil {
+		st.procRunning = a.runner.IsRunning()
+		st.strategy = a.runner.GetActiveStrategy()
+	}
+	return st
+}
+
+// restoreZapretState brings back the protection that was active before a benchmark stopped it.
+func (a *App) restoreZapretState(st zapretState) {
+	if !st.serviceRunning && !st.procRunning {
+		return
+	}
+	logger.Log("[Benchmark] Восстановление Zapret, который работал до тестирования...")
+	if st.serviceRunning {
+		if err := zapret.StartService(a.binDir); err != nil {
+			logger.Log("[Benchmark] Не удалось запустить службу Zapret обратно: %v", err)
+		}
+		return
+	}
+	if err := a.StartZapret(st.strategy); err != nil {
+		logger.Log("[Benchmark] Не удалось восстановить Zapret: %v", err)
+	}
+}
+
+func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup string) (zapret.BenchmarkResult, error) {
 	cfg := a.cfg.Clone()
 	if strategyID == "" {
 		strategyID = cfg.Zapret.Strategy
@@ -412,6 +537,10 @@ func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup
 
 	logger.Log("[Benchmark] Запрос тестирования стратегии '%s' (метод: %s, цели: %s)...", strategyID, method, targetGroup)
 
+	// Remember what was running; it is restored when the test is over.
+	prev := a.snapshotZapretState()
+	defer a.restoreZapretState(prev)
+
 	// 1. Обязательно завершаем запущенный до этого запрет перед началом проверки
 	_ = a.StopZapret()
 	time.Sleep(300 * time.Millisecond)
@@ -423,12 +552,17 @@ func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup
 		}
 	}
 
-	// 2. Временно запускаем проверяемую стратегию
+	// 2. Временно запускаем проверяемую стратегию. Если winws не стартовал, замер был бы сделан
+	// без обхода блокировок и дал бы ложный результат, поэтому тест прерывается с ошибкой.
 	logger.Log("[Benchmark] Запуск стратегии '%s' для замера доступности...", stratName)
-	if a.runner != nil {
-		_ = a.runner.Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
+	if a.runner == nil {
+		return zapret.BenchmarkResult{}, fmt.Errorf("process runner is not initialized")
 	}
-	time.Sleep(800 * time.Millisecond)
+	if err := a.runner.Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP); err != nil {
+		logger.Log("[Benchmark] Стратегия '%s' не запустилась: %v", stratName, err)
+		return zapret.BenchmarkResult{}, fmt.Errorf("не удалось запустить стратегию %q: %w", stratName, err)
+	}
+	time.Sleep(300 * time.Millisecond)
 
 	// 3. Выполняем проверку доступности целей
 	res := zapret.BenchmarkCurrentStrategy(strategyID, stratName, method, targetGroup)
@@ -441,18 +575,19 @@ func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup
 		logger.Log("[Benchmark] Отчет тестирования стратегии сохранен в: %s", reportPath)
 	}
 
-	// 4. Обязательно завершаем стратегию после проверки - запрет остается остановленным
-	logger.Log("[Benchmark] Тест стратегии '%s' завершен (%d/%d доступно). Запрет остановлен, выбор за пользователем.",
-		stratName, res.SuccessCount, res.TotalCount)
-	if a.runner != nil {
-		_ = a.runner.Stop()
-	}
+	// 4. Завершаем проверяемую стратегию (прежнее состояние Zapret вернётся через defer)
+	logger.Log("[Benchmark] Тест стратегии '%s' завершен (%d/%d доступно).", stratName, res.SuccessCount, res.TotalCount)
+	_ = a.runner.Stop()
 	time.Sleep(200 * time.Millisecond)
 
-	return res
+	return res, nil
 }
 
 func (a *App) StartSingleBenchmark(strategyID string, method string, targetGroup string) error {
+	if zapret.GetAutoBenchmarkStatus().Running {
+		return fmt.Errorf("выполняется тестирование всех стратегий")
+	}
+
 	a.benchMu.Lock()
 	if a.benchStatus.Running {
 		a.benchMu.Unlock()
@@ -466,11 +601,27 @@ func (a *App) StartSingleBenchmark(strategyID string, method string, targetGroup
 	a.benchMu.Unlock()
 
 	go func() {
-		res := a.RunStrategyBenchmark(strategyID, method, targetGroup)
+		var (
+			res zapret.BenchmarkResult
+			err error
+		)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("внутренняя ошибка теста: %v", r)
+				}
+			}()
+			res, err = a.RunStrategyBenchmark(strategyID, method, targetGroup)
+		}()
+
 		a.benchMu.Lock()
 		a.benchStatus.Running = false
 		a.benchStatus.Done = true
-		a.benchStatus.Result = &res
+		if err != nil {
+			a.benchStatus.Error = err.Error()
+		} else {
+			a.benchStatus.Result = &res
+		}
 		a.benchMu.Unlock()
 	}()
 
@@ -484,6 +635,13 @@ func (a *App) GetSingleBenchmarkStatus() SingleBenchmarkStatus {
 }
 
 func (a *App) StartAutoBenchmark(method string, targetGroup string) error {
+	a.benchMu.RLock()
+	singleRunning := a.benchStatus.Running
+	a.benchMu.RUnlock()
+	if singleRunning {
+		return fmt.Errorf("выполняется тестирование одной стратегии")
+	}
+
 	cfg := a.cfg.Clone()
 	if method == "" {
 		method = "all"
@@ -492,10 +650,19 @@ func (a *App) StartAutoBenchmark(method string, targetGroup string) error {
 		targetGroup = "all"
 	}
 	logger.Log("[AutoBenchmark] Запрос проверки ВСЕХ стратегий (метод: %s, цели: %s). Остановка активного Zapret перед началом...", method, targetGroup)
+
+	prev := a.snapshotZapretState()
 	// Обязательно завершаем запущенный до этого запрет
 	_ = a.StopZapret()
 	time.Sleep(300 * time.Millisecond)
-	return zapret.StartAutoBenchmark(a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP, method, targetGroup, a.appDir)
+	err := zapret.StartAutoBenchmark(a.runner, a.registry, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP, method, targetGroup, a.appDir, func() {
+		a.restoreZapretState(prev)
+	})
+	if err != nil {
+		// The benchmark did not start: bring back what we have just stopped.
+		a.restoreZapretState(prev)
+	}
+	return err
 }
 
 func (a *App) OpenTestLog() error {
@@ -545,16 +712,59 @@ func (a *App) CheckAppUpdate() (*updater.UpdateCheckResult, error) {
 	return updater.CheckAppUpdate(config.DefaultGithubRepo)
 }
 
-func (a *App) PerformAppUpdate(downloadURL string) error {
-	return updater.PerformInPlaceUpdate(downloadURL)
+// StartAssetSync downloads host lists and strategies from upstream in the background.
+// It can take longer than an HTTP request is allowed to, so the UI polls GetAssetSyncStatus.
+func (a *App) StartAssetSync() error {
+	a.syncMu.Lock()
+	if a.syncStatus.Running {
+		a.syncMu.Unlock()
+		return fmt.Errorf("синхронизация уже выполняется")
+	}
+	a.syncStatus = AssetSyncStatus{Running: true}
+	a.syncMu.Unlock()
+
+	go func() {
+		var (
+			summary *updater.AssetUpdateSummary
+			err     error
+		)
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("внутренняя ошибка синхронизации: %v", r)
+				}
+			}()
+			summary, err = updater.UpdateUpstreamAssets(a.listsDir, a.appDir)
+		}()
+		if err == nil {
+			if a.registry != nil {
+				if loadErr := a.registry.Load(); loadErr != nil {
+					logger.Log("[Updater] Не удалось перечитать strategies.json: %v", loadErr)
+				}
+			}
+			// Downloaded ipset-all.txt replaces the file that stores the IPSet mode: re-apply the mode.
+			if modeErr := zapret.SetIPSetMode(a.listsDir, a.cfg.Clone().Zapret.IPSetMode); modeErr != nil {
+				logger.Log("[Updater] Не удалось применить режим IPSet после обновления: %v", modeErr)
+			}
+		}
+
+		a.syncMu.Lock()
+		a.syncStatus.Running = false
+		a.syncStatus.Done = true
+		if err != nil {
+			a.syncStatus.Error = err.Error()
+		} else {
+			a.syncStatus.Summary = summary
+		}
+		a.syncMu.Unlock()
+	}()
+	return nil
 }
 
-func (a *App) UpdateAssets() (*updater.AssetUpdateSummary, error) {
-	summary, err := updater.UpdateUpstreamAssets(a.listsDir, a.appDir)
-	if err == nil && a.registry != nil {
-		_ = a.registry.Load()
-	}
-	return summary, err
+func (a *App) GetAssetSyncStatus() AssetSyncStatus {
+	a.syncMu.RLock()
+	defer a.syncMu.RUnlock()
+	return a.syncStatus
 }
 
 // Lists Editor
@@ -617,13 +827,13 @@ func (a *App) GenerateDebugReport() string {
 
 	if runtime.GOOS == "windows" {
 		// Query WinDivert driver status
-		out, err := exec.Command("sc", "query", "windivert").CombinedOutput()
+		out, err := platform.OutputHidden("sc", "query", "windivert")
 		if err == nil {
 			b.WriteString(fmt.Sprintf("\n--- Драйвер WinDivert ---\n%s\n", strings.TrimSpace(string(out))))
 		}
 
 		// Query running winws processes
-		outProc, _ := exec.Command("tasklist", "/FI", "IMAGENAME eq winws.exe").CombinedOutput()
+		outProc, _ := platform.OutputHidden("tasklist", "/FI", "IMAGENAME eq winws.exe")
 		b.WriteString(fmt.Sprintf("\n--- Процессы winws.exe ---\n%s\n", strings.TrimSpace(string(outProc))))
 
 		// TCP Timestamps & Diagnostics

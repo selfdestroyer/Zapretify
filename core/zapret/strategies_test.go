@@ -39,3 +39,21 @@ func TestBuildArgsStringEscaping(t *testing.T) {
 		t.Errorf("expected escaped quotes in sc args string, got: %s", res)
 	}
 }
+
+func TestRegistryFindIsStrict(t *testing.T) {
+	r := &StrategyRegistry{Strategies: []Strategy{{ID: "general", Name: "General"}, {ID: "alt", Name: "Alt"}}}
+
+	if s, ok := r.Find("alt"); !ok || s.ID != "alt" {
+		t.Fatalf("expected to find alt, got %v %v", s, ok)
+	}
+	if s, ok := r.Find("does-not-exist"); ok || s != nil {
+		t.Fatalf("unknown strategy must not be found, got %v", s)
+	}
+	if s, ok := r.Default(); !ok || s.ID != "general" {
+		t.Fatalf("expected default strategy general, got %v %v", s, ok)
+	}
+	empty := &StrategyRegistry{}
+	if _, ok := empty.Default(); ok {
+		t.Fatalf("empty registry has no default")
+	}
+}

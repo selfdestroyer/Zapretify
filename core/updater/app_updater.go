@@ -3,11 +3,7 @@ package updater
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -127,60 +123,4 @@ func CheckAppUpdate(_ string) (*UpdateCheckResult, error) {
 		AssetSize:      assetSize,
 		Release:        &rel,
 	}, nil
-}
-
-func PerformInPlaceUpdate(downloadURL string) error {
-	if downloadURL == "" {
-		return fmt.Errorf("download URL is empty")
-	}
-
-	exePath, err := os.Executable()
-	if err != nil {
-		return err
-	}
-
-	tmpPath := exePath + ".new"
-	oldPath := exePath + ".old"
-
-	resp, err := http.Get(downloadURL)
-	if err != nil {
-		return fmt.Errorf("failed to download update: %w", err)
-	}
-	defer resp.Body.Close()
-
-	out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0755)
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(out, resp.Body)
-	_ = out.Close()
-	if err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-
-	// Terminate running processes and WinDivert drivers before swapping executable
-	_ = exec.Command("taskkill", "/F", "/IM", "winws.exe").Run()
-	_ = exec.Command("net", "stop", "zapret").Run()
-	_ = exec.Command("net", "stop", "WinDivert").Run()
-	_ = exec.Command("net", "stop", "WinDivert14").Run()
-
-	// Rename current exe to .old, and new to current
-	_ = os.Remove(oldPath)
-	if err := os.Rename(exePath, oldPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("failed to rotate running executable: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, exePath); err != nil {
-		_ = os.Rename(oldPath, exePath) // rollback
-		return fmt.Errorf("failed to move new executable: %w", err)
-	}
-
-	// Restart new process and exit current
-	cmd := exec.Command(exePath)
-	cmd.Dir = filepath.Dir(exePath)
-	_ = cmd.Start()
-	os.Exit(0)
-	return nil
 }

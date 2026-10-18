@@ -76,6 +76,7 @@ func (r *StrategyRegistry) List() []Strategy {
 	return res
 }
 
+// Find returns the strategy with exactly this ID. Unknown IDs are NOT silently mapped to another strategy.
 func (r *StrategyRegistry) Find(id string) (*Strategy, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -85,12 +86,18 @@ func (r *StrategyRegistry) Find(id string) (*Strategy, bool) {
 			return &cpy, true
 		}
 	}
-	// Fallback to default "general"
-	if len(r.Strategies) > 0 {
-		cpy := r.Strategies[0]
-		return &cpy, true
-	}
 	return nil, false
+}
+
+// Default returns the first (default) strategy of the registry.
+func (r *StrategyRegistry) Default() (*Strategy, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if len(r.Strategies) == 0 {
+		return nil, false
+	}
+	cpy := r.Strategies[0]
+	return &cpy, true
 }
 
 // BuildArgs renders the raw arguments into command line tokens for exec.Command

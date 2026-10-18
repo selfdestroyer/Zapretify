@@ -4,7 +4,8 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 1.3.3 | :white_check_mark: | Current release (Phase 4 testing, DI, async benchmark, CI, and hardening) |
+| 1.3.4 | :white_check_mark: | Current release (installer API hardening, safe uninstall/update, PID-scoped process control) |
+| 1.3.3 | :white_check_mark: | Supported |
 | 1.3.2 | :white_check_mark: | Supported |
 | 1.3.1 | :white_check_mark: | Process monitoring and migration |
 | 1.3.0 | :white_check_mark: | Hardened local API security |
@@ -40,7 +41,14 @@ Zapretify implements defense-in-depth protection for all IPC and local server en
 5. **Safe URL & Process Execution**:
    - URLs requested via `/api/open-url` are parsed and strictly verified against an allowed host whitelist (`github.com`, `telegram.org`, `t.me`) and permitted schemes (`http`, `https`, `tg`).
    - Browser launches use `windows.ShellExecuteW` directly without passing raw strings into `cmd.exe` or PowerShell shells.
-   - Winws child processes are tracked by exact PID (`winws.pid`). Global process termination commands (`taskkill /IM winws.exe`) have been removed to prevent interfering with other DPI-circumvention utilities (GoodbyeDPI, Flowseal, etc.).
+   - Winws child processes are tracked by exact PID. A leftover PID from `winws.pid` is terminated only if its full image path is `<app>\bin\winws.exe`; the stop/start/service/uninstall/installer paths terminate only processes whose image lives in the application's own directory. Global `taskkill /IM winws.exe` is used **only** by the explicit emergency action (`/api/zapret/force-kill`, "Reset drivers"), which is documented as affecting other DPI tools too.
+
+6. **Installer & Uninstaller**:
+   - The installer's local server (it runs elevated) uses the same model as the application: loopback `Host` check, `Origin`/`Referer`/`Sec-Fetch-Site` checks and a per-run random token in an `HttpOnly; SameSite=Strict` cookie.
+   - PowerShell is invoked with `-EncodedCommand` and fixed scripts; user-supplied values are passed through environment variables only, never concatenated into script text.
+   - The install path must be absolute, not a drive root and not inside the Windows directory; archive entries are checked against path traversal.
+   - `config.json` is not shipped: each installation generates its own random Telegram proxy secret on first start. Upgrades never overwrite `config.json`, `lists/*-user.txt` or `custom.txt`.
+   - `--uninstall` removes only known application files/folders and the application folder itself only if it is then empty.
 
 ---
 
