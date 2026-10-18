@@ -10,9 +10,11 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"zapretify/core/config"
 )
 
-const CurrentVersion = "1.3.0"
+const CurrentVersion = config.Version
 
 type ReleaseAsset struct {
 	Name               string `json:"name"`

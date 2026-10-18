@@ -26,11 +26,12 @@ type Server struct {
 	cfUserDomains  []string
 	forceTestDC    bool
 
-	listener net.Listener
-	running  bool
-	mu       sync.Mutex
-	ctx      context.Context
-	cancel   context.CancelFunc
+	listener    net.Listener
+	running     bool
+	mu          sync.Mutex
+	activeConns sync.Map
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 var (
@@ -66,11 +67,10 @@ func (s *Server) Start(host string, port int, secret string, cfproxy bool, h2 bo
 		port = 1443
 	}
 
-	// Clean secret (strip dd/ee if present)
+	// Clean secret (strip dd/ee only if string has length 34 = 2-byte prefix + 32 hex chars)
 	cleanSecret := strings.TrimSpace(secret)
-	if strings.HasPrefix(strings.ToLower(cleanSecret), "dd") {
-		cleanSecret = cleanSecret[2:]
-	} else if strings.HasPrefix(strings.ToLower(cleanSecret), "ee") {
+	lowerSecret := strings.ToLower(cleanSecret)
+	if len(cleanSecret) == 34 && (strings.HasPrefix(lowerSecret, "dd") || strings.HasPrefix(lowerSecret, "ee")) {
 		cleanSecret = cleanSecret[2:]
 	}
 	if len(cleanSecret) > 32 {
@@ -129,7 +129,11 @@ func (s *Server) Start(host string, port int, secret string, cfproxy bool, h2 bo
 		secretBytes, _ = hex.DecodeString(cleanSecret)
 	}
 
-	logger.Log("[tg-ws-proxy] Сервер запущен на %s:%d (Secret: %s, CFProxy: %v)", host, port, cleanSecret, cfproxy)
+	maskedSecret := cleanSecret
+	if len(maskedSecret) > 6 {
+		maskedSecret = maskedSecret[:6] + "***"
+	}
+	logger.Log("[tg-ws-proxy] Сервер запущен на %s:%d (Secret: %s, CFProxy: %v)", host, port, maskedSecret, cfproxy)
 
 	go s.acceptLoop(l, cfg, secretBytes)
 	return nil
@@ -150,6 +154,16 @@ func (s *Server) Stop() error {
 	if s.listener != nil {
 		_ = s.listener.Close()
 	}
+
+	// Force close all active client sessions immediately
+	s.activeConns.Range(func(key, _ interface{}) bool {
+		if conn, ok := key.(net.Conn); ok {
+			_ = conn.Close()
+		}
+		s.activeConns.Delete(key)
+		return true
+	})
+
 	globalPool.reset()
 	logger.Log("[tg-ws-proxy] Сервер остановлен")
 	return nil
@@ -186,10 +200,13 @@ func (s *Server) acceptLoop(l net.Listener, cfg *Config, secret []byte) {
 		acceptBackoff = acceptBackoffMin
 		atomic.AddInt64(&stats.connectionsTotal, 1)
 
+		s.activeConns.Store(c, struct{}{})
+
 		select {
 		case sessionsSem <- struct{}{}:
 			go func(conn net.Conn) {
 				defer func() { <-sessionsSem }()
+				defer s.activeConns.Delete(conn)
 				defer func() {
 					if r := recover(); r != nil {
 						_ = conn.Close()
@@ -199,6 +216,7 @@ func (s *Server) acceptLoop(l net.Listener, cfg *Config, secret []byte) {
 				handleClient(conn, cfg, secret)
 			}(c)
 		default:
+			s.activeConns.Delete(c)
 			logger.Log("[tg-ws-proxy] Достигнут лимит сессий (%d), соединение от %s отклонено", cfg.MaxConns, c.RemoteAddr())
 			_ = c.Close()
 		}

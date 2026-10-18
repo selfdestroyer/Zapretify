@@ -60,16 +60,7 @@ func (p *ProcessRunner) emitLog(msg string) {
 func (p *ProcessRunner) IsRunning() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.cmd == nil || p.cmd.Process == nil {
-		return false
-	}
-	// Check if process has exited
-	if p.cmd.ProcessState != nil && p.cmd.ProcessState.Exited() {
-		p.cmd = nil
-		p.activeStrategy = ""
-		return false
-	}
-	return true
+	return p.cmd != nil && p.cmd.Process != nil
 }
 
 func (p *ProcessRunner) GetActiveStrategy() string {
@@ -89,7 +80,7 @@ func (p *ProcessRunner) Start(
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.cmd != nil && p.cmd.Process != nil && (p.cmd.ProcessState == nil || !p.cmd.ProcessState.Exited()) {
+	if p.cmd != nil && p.cmd.Process != nil {
 		return fmt.Errorf("process already running")
 	}
 
@@ -131,7 +122,21 @@ func (p *ProcessRunner) Start(
 	p.cmd = cmd
 	p.activeStrategy = strategyID
 	p.stopChan = make(chan struct{})
-	p.savePID(binDir, cmd.Process.Pid)
+	pid := cmd.Process.Pid
+	p.savePID(binDir, pid)
+
+	// Goroutine watching process exit (e.g. crash or external taskkill)
+	go func(c *exec.Cmd, expectedPID int) {
+		_ = c.Wait()
+		p.mu.Lock()
+		if p.cmd == c {
+			p.cmd = nil
+			p.activeStrategy = ""
+			p.removePID()
+			p.emitLog(fmt.Sprintf("[winws] Процесс winws (PID %d) завершил работу.", expectedPID))
+		}
+		p.mu.Unlock()
+	}(cmd, pid)
 
 	go func() {
 		scanner := bufio.NewScanner(stdout)
@@ -148,7 +153,7 @@ func (p *ProcessRunner) Start(
 	}()
 
 	time.Sleep(300 * time.Millisecond)
-	p.emitLog(fmt.Sprintf("Zapret успешно активен (PID: %d)", cmd.Process.Pid))
+	p.emitLog(fmt.Sprintf("Zapret успешно активен (PID: %d)", pid))
 	return nil
 }
 
@@ -169,7 +174,7 @@ func (p *ProcessRunner) removePID() {
 }
 
 // CleanupOrphans checks if a previous instance crashed and left its own winws process running.
-// It terminates only the process recorded in winws.pid, leaving any third-party winws processes untouched.
+// It verifies that the PID actually belongs to winws.exe before terminating it.
 func CleanupOrphans(binDir string) {
 	pidPath := getPIDFilePath(binDir)
 	data, err := os.ReadFile(pidPath)
@@ -184,7 +189,15 @@ func CleanupOrphans(binDir string) {
 		return
 	}
 
-	logger.Log("[Zapret] Обнаружен незавершенный PID %d от предыдущего сеанса. Завершение процесса...", pid)
+	if runtime.GOOS == "windows" {
+		out, err := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV", "/NH").CombinedOutput()
+		if err != nil || !strings.Contains(strings.ToLower(string(out)), "winws.exe") {
+			logger.Log("[Zapret] PID %d из winws.pid не принадлежит winws.exe (процесс завершен или PID переиспользован). Пропуск taskkill.", pid)
+			return
+		}
+	}
+
+	logger.Log("[Zapret] Обнаружен незавершенный PID %d (winws.exe) от предыдущего сеанса. Завершение процесса...", pid)
 	_ = platform.RunHidden("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F", "/T")
 }
 
@@ -197,14 +210,6 @@ func (p *ProcessRunner) Stop() error {
 		pid := p.cmd.Process.Pid
 		_ = platform.RunHidden("taskkill", "/PID", fmt.Sprintf("%d", pid), "/F", "/T")
 		_ = p.cmd.Process.Kill()
-		done := make(chan error, 1)
-		go func(c *exec.Cmd) {
-			done <- c.Wait()
-		}(p.cmd)
-		select {
-		case <-done:
-		case <-time.After(300 * time.Millisecond):
-		}
 	}
 	p.removePID()
 	p.cmd = nil

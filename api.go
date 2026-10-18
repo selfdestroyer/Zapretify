@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"zapretify/core/config"
 	"zapretify/core/zapret"
 )
 
@@ -104,6 +105,7 @@ func isAllowedURL(u *url.URL) bool {
 func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		status := map[string]interface{}{
+			"version":  config.Version,
 			"zapret":   app.GetZapretStatus(),
 			"tg_proxy": app.GetTGProxyStatus(),
 			"tg_link":  app.GetTGProxyLink(),

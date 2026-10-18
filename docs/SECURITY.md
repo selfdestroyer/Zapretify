@@ -4,7 +4,8 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 1.3.0 | :white_check_mark: | Current release with hardened local API security |
+| 1.3.1 | :white_check_mark: | Current release with process monitoring and migration |
+| 1.3.0 | :white_check_mark: | Hardened local API security |
 | < 1.3.0 | :x: | Recommended to upgrade |
 
 ---

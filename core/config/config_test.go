@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 )
 
@@ -75,3 +76,93 @@ func TestConfigValidation(t *testing.T) {
 		t.Errorf("expected config to be valid after restores, got: %v", err)
 	}
 }
+
+func TestConfigMigration(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// Prepare raw JSON mimicking an old v1.2.2 config with missing/invalid fields:
+	// - empty ipset_mode
+	// - empty game_filter_mode
+	// - out-of-range port (80)
+	// - 34-char secret starting with "dd"
+	rawOldConfig := []byte(`{
+		"app": {
+			"autostart_app": true,
+			"github_repo": "Flowseal/zapret-discord-youtube"
+		},
+		"zapret": {
+			"strategy": "",
+			"ipset_mode": "",
+			"game_filter_mode": ""
+		},
+		"tg_proxy": {
+			"host": "127.0.0.1",
+			"port": 80,
+			"secret": "dd0123456789abcdef0123456789abcdef"
+		}
+	}`)
+
+	cfg := &Config{
+		configPath: tempDir + "/config.json",
+	}
+
+	// Write old config file
+	if err := os.WriteFile(cfg.configPath, rawOldConfig, 0644); err != nil {
+		t.Fatalf("failed to write test old config: %v", err)
+	}
+
+	// Load should auto-migrate fields without error
+	if err := cfg.Load(); err != nil {
+		t.Fatalf("Load should succeed with migration, got error: %v", err)
+	}
+
+	if cfg.Zapret.IPSetMode != "none" {
+		t.Errorf("expected IPSetMode to be 'none', got %q", cfg.Zapret.IPSetMode)
+	}
+	if cfg.Zapret.GameFilterMode != "disabled" {
+		t.Errorf("expected GameFilterMode to be 'disabled', got %q", cfg.Zapret.GameFilterMode)
+	}
+	if cfg.Zapret.Strategy != "general" {
+		t.Errorf("expected Strategy to default to 'general', got %q", cfg.Zapret.Strategy)
+	}
+	if cfg.TGProxy.Port != 1443 {
+		t.Errorf("expected TGProxy.Port to reset to 1443, got %d", cfg.TGProxy.Port)
+	}
+	if cfg.TGProxy.Secret != "0123456789abcdef0123456789abcdef" {
+		t.Errorf("expected 34-char secret prefix 'dd' to be stripped, got %q", cfg.TGProxy.Secret)
+	}
+	if cfg.App.GithubRepo != "selfdestroyer/Zapretify" {
+		t.Errorf("expected GithubRepo to migrate to selfdestroyer/Zapretify, got %q", cfg.App.GithubRepo)
+	}
+
+	// Verify migrated config validates cleanly
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("migrated config failed validation: %v", err)
+	}
+}
+
+func TestConfigUpdate(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := DefaultConfig()
+	cfg.configPath = tempDir + "/config.json"
+
+	err := cfg.Update(func(c *Config) {
+		c.Zapret.Strategy = "alt5"
+	})
+	if err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	if cfg.Zapret.Strategy != "alt5" {
+		t.Errorf("expected strategy 'alt5', got %q", cfg.Zapret.Strategy)
+	}
+
+	// Test Update with invalid mutation returns validation error
+	err = cfg.Update(func(c *Config) {
+		c.TGProxy.Port = 99999
+	})
+	if err == nil {
+		t.Errorf("expected error for invalid port in Update, got nil")
+	}
+}
+

@@ -12,6 +12,8 @@ import (
 	"sync"
 )
 
+const Version = "1.3.1"
+
 var (
 	githubRepoRegex = regexp.MustCompile(`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`)
 )
@@ -195,14 +197,74 @@ func (c *Config) Load() error {
 		return err
 	}
 
+	needsSave := false
+
+	// Migration and normalization from v1.2.2 and older configs:
+	if c.Zapret.IPSetMode == "" {
+		if c.Zapret.IPSetFilter {
+			c.Zapret.IPSetMode = "loaded"
+		} else {
+			c.Zapret.IPSetMode = "none"
+		}
+		needsSave = true
+	}
+	if c.Zapret.GameFilterMode == "" {
+		if c.Zapret.GameFilter {
+			c.Zapret.GameFilterMode = "all"
+		} else {
+			c.Zapret.GameFilterMode = "disabled"
+		}
+		needsSave = true
+	}
+	if c.Zapret.GameFilterTCP == "" {
+		c.Zapret.GameFilterTCP = "1024-65535"
+		needsSave = true
+	}
+	if c.Zapret.GameFilterUDP == "" {
+		c.Zapret.GameFilterUDP = "1024-65535"
+		needsSave = true
+	}
+	if c.Zapret.Strategy == "" {
+		c.Zapret.Strategy = "general"
+		needsSave = true
+	}
+	if c.TGProxy.Port < 1024 || c.TGProxy.Port > 65535 {
+		c.TGProxy.Port = 1443
+		needsSave = true
+	}
+	// Normalize secret with length 34 and dd/ee prefix
+	sec := strings.TrimSpace(c.TGProxy.Secret)
+	secLower := strings.ToLower(sec)
+	if len(sec) == 34 && (strings.HasPrefix(secLower, "dd") || strings.HasPrefix(secLower, "ee")) {
+		c.TGProxy.Secret = sec[2:]
+		needsSave = true
+	}
 	if c.TGProxy.Secret == "" {
-		sec := make([]byte, 16)
-		_, _ = rand.Read(sec)
-		c.TGProxy.Secret = hex.EncodeToString(sec)
+		newSec := make([]byte, 16)
+		_, _ = rand.Read(newSec)
+		c.TGProxy.Secret = hex.EncodeToString(newSec)
+		needsSave = true
+	}
+	if c.App.GithubRepo == "" || c.App.GithubRepo == "Flowseal/zapret-discord-youtube" {
+		c.App.GithubRepo = "selfdestroyer/Zapretify"
+		needsSave = true
+	}
+
+	if needsSave {
 		_ = c.saveUnlocked()
 	}
 
 	return nil
+}
+
+func (c *Config) Update(fn func(cfg *Config)) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	fn(c)
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	return c.saveUnlocked()
 }
 
 func (c *Config) Save() error {
