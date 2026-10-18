@@ -74,10 +74,8 @@ func isVersionNewer(latest, current string) bool {
 	return false
 }
 
-func CheckAppUpdate(repo string) (*UpdateCheckResult, error) {
-	if repo == "" || repo == "Flowseal/zapret-discord-youtube" {
-		repo = "selfdestroyer/Zapretify"
-	}
+func CheckAppUpdate(_ string) (*UpdateCheckResult, error) {
+	repo := config.DefaultGithubRepo
 
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 	req, err := http.NewRequest("GET", url, nil)
@@ -160,6 +158,12 @@ func PerformInPlaceUpdate(downloadURL string) error {
 		_ = os.Remove(tmpPath)
 		return err
 	}
+
+	// Terminate running processes and WinDivert drivers before swapping executable
+	_ = exec.Command("taskkill", "/F", "/IM", "winws.exe").Run()
+	_ = exec.Command("net", "stop", "zapret").Run()
+	_ = exec.Command("net", "stop", "WinDivert").Run()
+	_ = exec.Command("net", "stop", "WinDivert14").Run()
 
 	// Rename current exe to .old, and new to current
 	_ = os.Remove(oldPath)

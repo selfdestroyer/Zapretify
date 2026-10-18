@@ -71,18 +71,18 @@ func (a *App) startup(ctx context.Context) {
 
 // Config
 func (a *App) GetConfig() *config.Config {
-	return config.Get()
+	return config.Get().Clone()
 }
 
 func (a *App) SaveConfig(cfg *config.Config) error {
 	if err := config.SetAppAutostart(cfg.App.AutostartApp); err != nil {
 		return fmt.Errorf("автозапуск: %w", err)
 	}
-	c := config.Get()
-	c.App = cfg.App
-	c.Zapret = cfg.Zapret
-	c.TGProxy = cfg.TGProxy
-	return c.Save()
+	return config.Get().Update(func(c *config.Config) {
+		c.App = cfg.App
+		c.Zapret = cfg.Zapret
+		c.TGProxy = cfg.TGProxy
+	})
 }
 
 // Zapret
@@ -183,12 +183,18 @@ func (a *App) StopZapret() error {
 
 func (a *App) ForceKillZapret() error {
 	logger.Log("[Zapret] Аварийный сброс: Kill winws.exe...")
-	_ = zapret.GetRunner().Stop()
-	_ = zapret.StopService()
-	_ = runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
+	errRunner := zapret.GetRunner().Stop()
+	errSvc := zapret.StopService()
+	errKill := runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
 	time.Sleep(200 * time.Millisecond)
 	logger.Log("[Zapret] Все процессы winws.exe принудительно завершены.")
-	return nil
+	if errRunner != nil {
+		return errRunner
+	}
+	if errSvc != nil {
+		return errSvc
+	}
+	return errKill
 }
 
 // Shutdown гарантированно и полностью останавливает Zapret, WinDivert, Telegram Proxy и все зависимости
@@ -406,9 +412,9 @@ func (a *App) SetIPSetMode(mode string) error {
 	if err := zapret.SetIPSetMode(a.listsDir, mode); err != nil {
 		return err
 	}
-	cfg := config.Get()
-	cfg.Zapret.IPSetMode = mode
-	return cfg.Save()
+	return config.Get().Update(func(c *config.Config) {
+		c.Zapret.IPSetMode = mode
+	})
 }
 
 func (a *App) GetDiagnostics() platform.DiagnosticReport {
@@ -417,8 +423,7 @@ func (a *App) GetDiagnostics() platform.DiagnosticReport {
 
 // Updaters
 func (a *App) CheckAppUpdate() (*updater.UpdateCheckResult, error) {
-	cfg := config.Get()
-	return updater.CheckAppUpdate(cfg.App.GithubRepo)
+	return updater.CheckAppUpdate(config.DefaultGithubRepo)
 }
 
 func (a *App) PerformAppUpdate(downloadURL string) error {
@@ -446,10 +451,12 @@ func (a *App) SaveList(filename string, content string) error {
 
 // Autostart
 func (a *App) SetAutostartApp(enabled bool) error {
-	cfg := config.Get()
-	cfg.App.AutostartApp = enabled
-	_ = cfg.Save()
-	return config.SetAppAutostart(enabled)
+	if err := config.SetAppAutostart(enabled); err != nil {
+		return err
+	}
+	return config.Get().Update(func(c *config.Config) {
+		c.App.AutostartApp = enabled
+	})
 }
 
 func (a *App) RestartAsAdmin() error {
@@ -465,8 +472,9 @@ func (a *App) GetLogs() []string {
 	return logger.GetLines()
 }
 
-func (a *App) ClearLogs() {
+func (a *App) ClearLogs() error {
 	logger.Clear()
+	return nil
 }
 
 func (a *App) GenerateDebugReport() string {

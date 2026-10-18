@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"zapretify/core/config"
+	"zapretify/core/logger"
 	"zapretify/core/zapret"
 )
 
@@ -20,6 +21,20 @@ func writeJSONStatus(w http.ResponseWriter, code int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(data)
+}
+
+func badRequest(w http.ResponseWriter, msg string) {
+	writeJSONStatus(w, http.StatusBadRequest, map[string]string{
+		"status": "error",
+		"error":  msg,
+	})
+}
+
+func serverError(w http.ResponseWriter, msg string) {
+	writeJSONStatus(w, http.StatusInternalServerError, map[string]string{
+		"status": "error",
+		"error":  msg,
+	})
 }
 
 func requirePost(w http.ResponseWriter, r *http.Request) bool {
@@ -77,7 +92,16 @@ func validIPSetMode(mode string) bool {
 func isAllowedURL(u *url.URL) bool {
 	scheme := strings.ToLower(u.Scheme)
 	if scheme == "tg" {
-		return true
+		host := strings.ToLower(u.Host)
+		if host == "" {
+			host = strings.ToLower(u.Hostname())
+		}
+		switch host {
+		case "proxy", "resolve", "join":
+			return true
+		default:
+			return false
+		}
 	}
 	if scheme != "http" && scheme != "https" {
 		return false
@@ -129,27 +153,20 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 				return
 			}
 
+			cfgCopy.App.GithubRepo = config.DefaultGithubRepo
+
 			if err := cfgCopy.Validate(); err != nil {
-				writeJSONStatus(w, http.StatusBadRequest, map[string]string{
-					"status": "error",
-					"error":  "Config validation failed: " + err.Error(),
-				})
+				badRequest(w, "Config validation failed: "+err.Error())
 				return
 			}
 
 			if cfgCopy.Zapret.Strategy != "" && !validStrategy(cfgCopy.Zapret.Strategy) {
-				writeJSONStatus(w, http.StatusBadRequest, map[string]string{
-					"status": "error",
-					"error":  "Invalid zapret strategy ID: strategy not found in registry",
-				})
+				badRequest(w, "Invalid zapret strategy ID: strategy not found in registry")
 				return
 			}
 
 			if err := app.SaveConfig(cfgCopy); err != nil {
-				writeJSONStatus(w, http.StatusInternalServerError, map[string]string{
-					"status": "error",
-					"error":  err.Error(),
-				})
+				serverError(w, err.Error())
 				return
 			}
 		} else if r.Method != http.MethodGet {
@@ -172,12 +189,12 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		}
 		stratID := r.URL.Query().Get("strategy")
 		if !validStrategy(stratID) {
-			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid strategy ID"})
+			badRequest(w, "Invalid strategy ID")
 			return
 		}
 		err := app.StartZapret(stratID)
 		if err != nil {
-			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			serverError(w, err.Error())
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
@@ -193,7 +210,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		}
 		err := app.StopZapret()
 		if err != nil {
-			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			serverError(w, err.Error())
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
@@ -209,12 +226,12 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		}
 		stratID := r.URL.Query().Get("strategy")
 		if !validStrategy(stratID) {
-			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid strategy ID"})
+			badRequest(w, "Invalid strategy ID")
 			return
 		}
 		err := app.InstallZapretService(stratID)
 		if err != nil {
-			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			serverError(w, err.Error())
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
@@ -226,7 +243,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		}
 		err := app.RemoveZapretService()
 		if err != nil {
-			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			serverError(w, err.Error())
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok"})
@@ -236,7 +253,10 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		if !requirePost(w, r) {
 			return
 		}
-		_ = app.ForceKillZapret()
+		if err := app.ForceKillZapret(); err != nil {
+			serverError(w, err.Error())
+			return
+		}
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
@@ -245,7 +265,9 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		writeJSON(w, map[string]string{"status": "ok", "message": "Приложение и все зависимости завершаются..."})
-		_ = app.ForceExitAll()
+		if err := app.ForceExitAll(); err != nil {
+			logger.Log("[App] ForceExitAll error: %v", err)
+		}
 	})
 
 	mux.HandleFunc("/api/zapret/reset-drivers", func(w http.ResponseWriter, r *http.Request) {
@@ -482,7 +504,10 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		if !requirePost(w, r) {
 			return
 		}
-		app.ClearLogs()
+		if err := app.ClearLogs(); err != nil {
+			serverError(w, err.Error())
+			return
+		}
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 

@@ -37,6 +37,8 @@ func TestValidators(t *testing.T) {
 		"https://raw.githubusercontent.com/selfdestroyer/Zapretify/main/version.json",
 		"https://t.me/zapretify",
 		"tg://proxy?server=127.0.0.1&port=1443&secret=123",
+		"tg://resolve?domain=zapretify",
+		"tg://join?invite=abc",
 	}
 	for _, uStr := range allowedURLs {
 		parsed, err := url.Parse(uStr)
@@ -53,6 +55,9 @@ func TestValidators(t *testing.T) {
 		"http://localhost:8080/exploit",
 		"javascript:alert(1)",
 		"data:text/html,<h1>test</h1>",
+		"tg://",
+		"tg://unknown",
+		"tg://evil?command=run",
 	}
 	for _, uStr := range blockedURLs {
 		parsed, err := url.Parse(uStr)

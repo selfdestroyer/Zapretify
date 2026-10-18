@@ -222,11 +222,15 @@ func runInstallation(req InstallRequest) {
 	targetDir := req.Path
 
 	// 0. Cleanly stop any running instances of Zapretify or its background services
-	updateProgress(5, "Остановка активных процессов...", "Завершение Zapretify и служб")
+	updateProgress(5, "Остановка активных процессов и драйверов...", "Завершение Zapretify, служб и WinDivert")
 	_ = exec.Command("taskkill", "/F", "/IM", "Zapretify.exe").Run()
 	_ = exec.Command("taskkill", "/F", "/IM", "winws.exe").Run()
 	_ = exec.Command("taskkill", "/F", "/IM", "tg-ws-proxy.exe").Run()
 	_ = exec.Command("net", "stop", "zapret").Run()
+	_ = exec.Command("net", "stop", "WinDivert").Run()
+	_ = exec.Command("net", "stop", "WinDivert14").Run()
+	_ = exec.Command("sc", "delete", "WinDivert").Run()
+	_ = exec.Command("sc", "delete", "WinDivert14").Run()
 	time.Sleep(300 * time.Millisecond)
 
 	updateProgress(10, "Подготовка каталогов...", targetDir)

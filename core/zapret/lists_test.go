@@ -14,22 +14,30 @@ func TestListManagerPathTraversal(t *testing.T) {
 
 	lm := NewListManager(tempDir)
 
-	// Valid file test
-	validFile := "user-general.txt"
-	content := "domain.com\nanother.org\n"
-	if err := lm.WriteRaw(validFile, content); err != nil {
-		t.Fatalf("unexpected error writing valid file: %v", err)
+	// Valid file tests
+	validFiles := []string{"list-general.txt", "custom-rules-user.txt", "ipset-all.txt"}
+	for _, vf := range validFiles {
+		content := "domain.com\nanother.org\n"
+		if err := lm.WriteRaw(vf, content); err != nil {
+			t.Fatalf("unexpected error writing valid file %s: %v", vf, err)
+		}
+
+		readBack, err := lm.ReadRaw(vf)
+		if err != nil {
+			t.Fatalf("unexpected error reading valid file %s: %v", vf, err)
+		}
+		if readBack != content {
+			t.Errorf("expected %q, got %q", content, readBack)
+		}
 	}
 
-	readBack, err := lm.ReadRaw(validFile)
-	if err != nil {
-		t.Fatalf("unexpected error reading valid file: %v", err)
-	}
-	if readBack != content {
-		t.Errorf("expected %q, got %q", content, readBack)
+	// 5MB limit test
+	hugeContent := string(make([]byte, 6*1024*1024))
+	if err := lm.WriteRaw("list-general.txt", hugeContent); err == nil {
+		t.Errorf("expected error when writing >5MB content, got nil")
 	}
 
-	// Traversal attacks, extensions, NTFS ADS, and DOS device names
+	// Traversal attacks, extensions, NTFS ADS, DOS device names, and non-whitelisted names
 	attacks := []string{
 		"../secret.txt",
 		"..\\secret.txt",
@@ -47,11 +55,15 @@ func TestListManagerPathTraversal(t *testing.T) {
 		"test.txt:$DATA",
 		"CON.txt",
 		"con.txt",
+		"CON.foo.txt",
+		"con.bar.user.txt",
 		"NUL.txt",
 		"aux.txt",
 		"prn.txt",
 		"com1.txt",
 		"lpt1.txt",
+		"unknown-list.txt",
+		"hacked.txt",
 	}
 
 	for _, attack := range attacks {

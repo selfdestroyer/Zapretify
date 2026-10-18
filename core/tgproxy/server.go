@@ -213,7 +213,7 @@ func (s *Server) acceptLoop(l net.Listener, cfg *Config, secret []byte) {
 						logger.Log("[tg-ws-proxy] [%s] panic recovered: %v", conn.RemoteAddr(), r)
 					}
 				}()
-				handleClient(conn, cfg, secret)
+				handleClient(s.ctx, conn, cfg, secret)
 			}(c)
 		default:
 			s.activeConns.Delete(c)
@@ -223,7 +223,11 @@ func (s *Server) acceptLoop(l net.Listener, cfg *Config, secret []byte) {
 	}
 }
 
-func handleClient(client net.Conn, cfg *Config, secret []byte) {
+func handleClient(ctx context.Context, client net.Conn, cfg *Config, secret []byte) {
+	if ctx != nil && ctx.Err() != nil {
+		_ = client.Close()
+		return
+	}
 	atomic.AddInt64(&stats.connectionsActive, 1)
 	defer atomic.AddInt64(&stats.connectionsActive, -1)
 	defer client.Close()

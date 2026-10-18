@@ -16,11 +16,23 @@ func NewListManager(listsDir string) *ListManager {
 	return &ListManager{listsDir: listsDir}
 }
 
-var reservedDeviceNames = map[string]bool{
-	"CON": true, "PRN": true, "AUX": true, "NUL": true,
-	"COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true,
-	"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
-}
+var (
+	reservedDeviceNames = map[string]bool{
+		"CON": true, "PRN": true, "AUX": true, "NUL": true,
+		"COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true,
+		"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
+	}
+
+	knownLists = map[string]bool{
+		"list-general.txt": true,
+		"list-exclude.txt": true,
+		"list-google.txt":  true,
+		"ipset-all.txt":    true,
+		"ipset-exclude.txt": true,
+	}
+)
+
+const MaxListSize = 5 * 1024 * 1024 // 5 MB
 
 func (m *ListManager) cleanPath(filename string) (string, error) {
 	if strings.Contains(filename, ":") {
@@ -30,13 +42,25 @@ func (m *ListManager) cleanPath(filename string) (string, error) {
 	if cleanName == "." || cleanName == "/" || cleanName == "\\" || strings.Contains(filename, "..") || strings.ContainsAny(filename, `/\`) {
 		return "", fmt.Errorf("invalid list filename: %s", filename)
 	}
-	if !strings.HasSuffix(strings.ToLower(cleanName), ".txt") {
+	lower := strings.ToLower(cleanName)
+	if !strings.HasSuffix(lower, ".txt") {
 		return "", fmt.Errorf("invalid list extension: only .txt files are allowed: %s", filename)
 	}
-	baseWithoutExt := strings.TrimSuffix(strings.ToUpper(cleanName), ".TXT")
-	if reservedDeviceNames[baseWithoutExt] {
+
+	// Check reserved device names up to the first dot (e.g. CON.foo.txt)
+	firstPart := cleanName
+	if dotIdx := strings.Index(cleanName, "."); dotIdx != -1 {
+		firstPart = cleanName[:dotIdx]
+	}
+	if reservedDeviceNames[strings.ToUpper(firstPart)] {
 		return "", fmt.Errorf("reserved device name not allowed: %s", filename)
 	}
+
+	// Only allow known standard lists and *-user.txt files
+	if !knownLists[lower] && !strings.HasSuffix(lower, "-user.txt") {
+		return "", fmt.Errorf("disallowed list filename: %s (only standard lists and *-user.txt are permitted)", filename)
+	}
+
 	fullPath := filepath.Join(m.listsDir, cleanName)
 	rel, err := filepath.Rel(m.listsDir, fullPath)
 	if err != nil || strings.HasPrefix(rel, "..") {
@@ -61,12 +85,20 @@ func (m *ListManager) ReadRaw(filename string) (string, error) {
 }
 
 func (m *ListManager) WriteRaw(filename string, content string) error {
+	if len(content) > MaxListSize {
+		return fmt.Errorf("content exceeds maximum allowed list size of 5MB (%d bytes)", len(content))
+	}
 	p, err := m.cleanPath(filename)
 	if err != nil {
 		return err
 	}
 	_ = os.MkdirAll(m.listsDir, 0755)
-	return os.WriteFile(p, []byte(content), 0644)
+
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
 }
 
 func (m *ListManager) ReadDomains(filename string) ([]string, error) {

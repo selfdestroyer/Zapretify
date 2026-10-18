@@ -12,11 +12,74 @@ import (
 	"sync"
 )
 
-const Version = "1.3.1"
+const Version = "1.3.2"
+const DefaultGithubRepo = "selfdestroyer/Zapretify"
 
 var (
 	githubRepoRegex = regexp.MustCompile(`^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$`)
+	domainRegex     = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$`)
 )
+
+// ValidatePortRange checks that s consists of comma-separated valid ports or ranges (e.g. "80,443,1024-65535").
+func ValidatePortRange(val string) error {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return fmt.Errorf("port specification cannot be empty")
+	}
+	parts := strings.Split(val, ",")
+	if len(parts) > 16 {
+		return fmt.Errorf("too many port ranges: maximum 16 allowed")
+	}
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return fmt.Errorf("empty port element in %q", val)
+		}
+		if strings.Contains(p, "-") {
+			rangeParts := strings.Split(p, "-")
+			if len(rangeParts) != 2 {
+				return fmt.Errorf("invalid range format %q", p)
+			}
+			var start, end int
+			if n, err := fmt.Sscanf(rangeParts[0], "%d", &start); err != nil || n != 1 || fmt.Sprintf("%d", start) != rangeParts[0] {
+				return fmt.Errorf("invalid port %q", rangeParts[0])
+			}
+			if n, err := fmt.Sscanf(rangeParts[1], "%d", &end); err != nil || n != 1 || fmt.Sprintf("%d", end) != rangeParts[1] {
+				return fmt.Errorf("invalid port %q", rangeParts[1])
+			}
+			if start < 1 || start > 65535 || end < 1 || end > 65535 {
+				return fmt.Errorf("port out of range 1-65535 in %q", p)
+			}
+			if start > end {
+				return fmt.Errorf("range start %d cannot be greater than end %d", start, end)
+			}
+		} else {
+			var port int
+			if n, err := fmt.Sscanf(p, "%d", &port); err != nil || n != 1 || fmt.Sprintf("%d", port) != p {
+				return fmt.Errorf("invalid port %q", p)
+			}
+			if port < 1 || port > 65535 {
+				return fmt.Errorf("port out of range 1-65535: %d", port)
+			}
+		}
+	}
+	return nil
+}
+
+// ValidateDomain checks that d is a valid hostname without scheme, port, or path.
+func ValidateDomain(d string) error {
+	d = strings.TrimSpace(d)
+	if d == "" {
+		return fmt.Errorf("domain cannot be empty")
+	}
+	if strings.Contains(d, "://") || strings.Contains(d, "/") || strings.Contains(d, ":") {
+		return fmt.Errorf("invalid domain %q: scheme, port, or path not allowed", d)
+	}
+	if !domainRegex.MatchString(d) {
+		return fmt.Errorf("invalid domain format %q", d)
+	}
+	return nil
+}
 
 type AppConfig struct {
 	Theme            string `json:"theme"`
@@ -79,18 +142,41 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("invalid TGProxy host %q: only loopback (127.0.0.1, localhost) is permitted", c.TGProxy.Host)
 	}
 
-	// Secret: valid 32-character hex string (16 bytes)
-	if c.TGProxy.Secret != "" {
-		secBytes, err := hex.DecodeString(c.TGProxy.Secret)
-		if err != nil || len(secBytes) != 16 {
-			return fmt.Errorf("invalid TGProxy secret: must be a 32-character hex string (16 bytes)")
+	// Secret: mandatory 32-character hex string (16 bytes)
+	if c.TGProxy.Secret == "" {
+		return fmt.Errorf("TGProxy secret cannot be empty")
+	}
+	secBytes, err := hex.DecodeString(c.TGProxy.Secret)
+	if err != nil || len(secBytes) != 16 {
+		return fmt.Errorf("invalid TGProxy secret: must be a 32-character hex string (16 bytes)")
+	}
+
+	// CFWorkerDomain and CFUserDomain
+	for _, d := range c.TGProxy.CFWorkerDomain {
+		if err := ValidateDomain(d); err != nil {
+			return fmt.Errorf("invalid CFWorkerDomain: %w", err)
+		}
+	}
+	for _, d := range c.TGProxy.CFUserDomain {
+		if err := ValidateDomain(d); err != nil {
+			return fmt.Errorf("invalid CFUserDomain: %w", err)
 		}
 	}
 
-	// GithubRepo: must follow owner/repo format
-	if c.App.GithubRepo != "" {
-		if !githubRepoRegex.MatchString(c.App.GithubRepo) {
-			return fmt.Errorf("invalid GithubRepo %q: must match owner/repo pattern", c.App.GithubRepo)
+	// GithubRepo: locked to DefaultGithubRepo
+	if c.App.GithubRepo != "" && c.App.GithubRepo != DefaultGithubRepo {
+		return fmt.Errorf("invalid GithubRepo %q: repository is locked to %s", c.App.GithubRepo, DefaultGithubRepo)
+	}
+
+	// GameFilterTCP and GameFilterUDP port ranges
+	if c.Zapret.GameFilterTCP != "" {
+		if err := ValidatePortRange(c.Zapret.GameFilterTCP); err != nil {
+			return fmt.Errorf("invalid GameFilterTCP: %w", err)
+		}
+	}
+	if c.Zapret.GameFilterUDP != "" {
+		if err := ValidatePortRange(c.Zapret.GameFilterUDP); err != nil {
+			return fmt.Errorf("invalid GameFilterUDP: %w", err)
 		}
 	}
 
@@ -128,7 +214,7 @@ func DefaultConfig() *Config {
 			AutostartApp:     false,
 			StartMinimized:   false,
 			MinimizeToTray:   true,
-			GithubRepo:       "selfdestroyer/Zapretify",
+			GithubRepo:       DefaultGithubRepo,
 			AutoUpdateApp:    true,
 			AutoUpdateAssets: true,
 		},
@@ -174,9 +260,7 @@ func Get() *Config {
 		appDir := filepath.Dir(exePath)
 		instance.configPath = filepath.Join(appDir, "config.json")
 		_ = instance.Load()
-		if instance.App.GithubRepo == "" || instance.App.GithubRepo == "Flowseal/zapret-discord-youtube" {
-			instance.App.GithubRepo = "selfdestroyer/Zapretify"
-		}
+		instance.App.GithubRepo = DefaultGithubRepo
 	})
 	return instance
 }
@@ -216,11 +300,11 @@ func (c *Config) Load() error {
 		}
 		needsSave = true
 	}
-	if c.Zapret.GameFilterTCP == "" {
+	if c.Zapret.GameFilterTCP == "" || ValidatePortRange(c.Zapret.GameFilterTCP) != nil {
 		c.Zapret.GameFilterTCP = "1024-65535"
 		needsSave = true
 	}
-	if c.Zapret.GameFilterUDP == "" {
+	if c.Zapret.GameFilterUDP == "" || ValidatePortRange(c.Zapret.GameFilterUDP) != nil {
 		c.Zapret.GameFilterUDP = "1024-65535"
 		needsSave = true
 	}
@@ -239,14 +323,36 @@ func (c *Config) Load() error {
 		c.TGProxy.Secret = sec[2:]
 		needsSave = true
 	}
-	if c.TGProxy.Secret == "" {
+	if c.TGProxy.Secret == "" || len(c.TGProxy.Secret) != 32 {
 		newSec := make([]byte, 16)
 		_, _ = rand.Read(newSec)
 		c.TGProxy.Secret = hex.EncodeToString(newSec)
 		needsSave = true
 	}
-	if c.App.GithubRepo == "" || c.App.GithubRepo == "Flowseal/zapret-discord-youtube" {
-		c.App.GithubRepo = "selfdestroyer/Zapretify"
+
+	// Filter invalid domains
+	var validWorkers []string
+	for _, d := range c.TGProxy.CFWorkerDomain {
+		if ValidateDomain(d) == nil {
+			validWorkers = append(validWorkers, strings.TrimSpace(d))
+		} else {
+			needsSave = true
+		}
+	}
+	c.TGProxy.CFWorkerDomain = validWorkers
+
+	var validUsers []string
+	for _, d := range c.TGProxy.CFUserDomain {
+		if ValidateDomain(d) == nil {
+			validUsers = append(validUsers, strings.TrimSpace(d))
+		} else {
+			needsSave = true
+		}
+	}
+	c.TGProxy.CFUserDomain = validUsers
+
+	if c.App.GithubRepo != DefaultGithubRepo {
+		c.App.GithubRepo = DefaultGithubRepo
 		needsSave = true
 	}
 
@@ -261,6 +367,7 @@ func (c *Config) Update(fn func(cfg *Config)) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	fn(c)
+	c.App.GithubRepo = DefaultGithubRepo
 	if err := c.Validate(); err != nil {
 		return err
 	}

@@ -48,12 +48,12 @@ func TestConfigValidation(t *testing.T) {
 		t.Errorf("expected valid secret, got error: %v", err)
 	}
 
-	// Test invalid GithubRepo
-	cfg.App.GithubRepo = "invalid-repo-without-slash"
+	// Test invalid GithubRepo (must match DefaultGithubRepo)
+	cfg.App.GithubRepo = "evil-hacker/zapret"
 	if err := cfg.Validate(); err == nil {
-		t.Errorf("expected error for GithubRepo without slash, got nil")
+		t.Errorf("expected error for non-default GithubRepo, got nil")
 	}
-	cfg.App.GithubRepo = "owner/repo" // restore valid
+	cfg.App.GithubRepo = DefaultGithubRepo // restore valid
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("expected valid GithubRepo, got error: %v", err)
 	}
@@ -72,8 +72,87 @@ func TestConfigValidation(t *testing.T) {
 	}
 	cfg.Zapret.GameFilterMode = "disabled" // restore valid
 
+	// Test GameFilterTCP/UDP validation
+	cfg.Zapret.GameFilterTCP = "1024-65535 --malicious-arg"
+	if err := cfg.Validate(); err == nil {
+		t.Errorf("expected error for GameFilterTCP with argument injection, got nil")
+	}
+	cfg.Zapret.GameFilterTCP = "1024-65535" // restore valid
+
+	// Test CFWorkerDomain validation
+	cfg.TGProxy.CFWorkerDomain = []string{"https://worker.dev/bad"}
+	if err := cfg.Validate(); err == nil {
+		t.Errorf("expected error for CFWorkerDomain with scheme and path, got nil")
+	}
+	cfg.TGProxy.CFWorkerDomain = []string{"worker.example.com"} // restore valid
+
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("expected config to be valid after restores, got: %v", err)
+	}
+}
+
+func TestValidatePortRange(t *testing.T) {
+	valid := []string{
+		"80",
+		"443",
+		"1024-65535",
+		"80,443",
+		"80,443,1024-65535",
+		"1-100,200-300,5000",
+	}
+	for _, v := range valid {
+		if err := ValidatePortRange(v); err != nil {
+			t.Errorf("ValidatePortRange(%q) expected nil, got: %v", v, err)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"   ",
+		"0",
+		"-1",
+		"70000",
+		"1024-65535 --foo",
+		"65535-1024",
+		"80,,443",
+		"80-",
+		"-80",
+		"abc",
+		"1024-abc",
+	}
+	for _, inv := range invalid {
+		if err := ValidatePortRange(inv); err == nil {
+			t.Errorf("ValidatePortRange(%q) expected error, got nil", inv)
+		}
+	}
+}
+
+func TestValidateDomain(t *testing.T) {
+	valid := []string{
+		"example.com",
+		"sub.example.com",
+		"my-worker.workers.dev",
+		"cloudflare.com",
+	}
+	for _, v := range valid {
+		if err := ValidateDomain(v); err != nil {
+			t.Errorf("ValidateDomain(%q) expected nil, got: %v", v, err)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"https://example.com",
+		"http://example.com",
+		"example.com/path",
+		"example.com:8080",
+		"example..com",
+		"bad_domain!.com",
+	}
+	for _, inv := range invalid {
+		if err := ValidateDomain(inv); err == nil {
+			t.Errorf("ValidateDomain(%q) expected error, got nil", inv)
+		}
 	}
 }
 

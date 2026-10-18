@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"zapretify/core/config"
 )
 
 type Strategy struct {
@@ -134,10 +136,10 @@ func buildProcessedRawArgs(
 		lPath += string(filepath.Separator)
 	}
 
-	if gameTCPRange == "" {
+	if gameTCPRange == "" || config.ValidatePortRange(gameTCPRange) != nil {
 		gameTCPRange = "1024-65535"
 	}
-	if gameUDPRange == "" {
+	if gameUDPRange == "" || config.ValidatePortRange(gameUDPRange) != nil {
 		gameUDPRange = "1024-65535"
 	}
 
