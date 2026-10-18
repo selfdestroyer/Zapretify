@@ -23,15 +23,40 @@ func runHidden(name string, args ...string) error {
 	return platform.RunHidden(name, args...)
 }
 
+type SingleBenchmarkStatus struct {
+	Running    bool                    `json:"running"`
+	Done       bool                    `json:"done"`
+	StrategyID string                  `json:"strategy_id"`
+	Result     *zapret.BenchmarkResult `json:"result,omitempty"`
+	Error      string                  `json:"error,omitempty"`
+}
+
 type App struct {
 	ctx          context.Context
 	appDir       string
 	binDir       string
 	listsDir     string
 	shutdownOnce sync.Once
+
+	cfg      *config.Config
+	runner   *zapret.ProcessRunner
+	registry *zapret.StrategyRegistry
+	tgServer *tgproxy.Server
+
+	benchMu     sync.RWMutex
+	benchStatus SingleBenchmarkStatus
 }
 
 func NewApp() *App {
+	return NewAppWith(
+		config.Get(),
+		zapret.GetRunner(),
+		zapret.GetRegistry(),
+		tgproxy.GetServer(),
+	)
+}
+
+func NewAppWith(cfg *config.Config, runner *zapret.ProcessRunner, registry *zapret.StrategyRegistry, tgServer *tgproxy.Server) *App {
 	exePath, err := os.Executable()
 	if err != nil {
 		exePath = "."
@@ -46,6 +71,10 @@ func NewApp() *App {
 		appDir:   appDir,
 		binDir:   binDir,
 		listsDir: listsDir,
+		cfg:      cfg,
+		runner:   runner,
+		registry: registry,
+		tgServer: tgServer,
 	}
 }
 
@@ -56,7 +85,7 @@ func (a *App) startup(ctx context.Context) {
 	zapret.CleanupOrphans(a.binDir)
 
 	// Autostart services ONLY if explicitly configured by user
-	cfg := config.Get()
+	cfg := a.cfg.Clone()
 	if cfg.TGProxy.Autostart {
 		_ = a.StartTGProxy()
 	}
@@ -71,14 +100,14 @@ func (a *App) startup(ctx context.Context) {
 
 // Config
 func (a *App) GetConfig() *config.Config {
-	return config.Get().Clone()
+	return a.cfg.Clone()
 }
 
 func (a *App) SaveConfig(cfg *config.Config) error {
 	if err := config.SetAppAutostart(cfg.App.AutostartApp); err != nil {
 		return fmt.Errorf("автозапуск: %w", err)
 	}
-	return config.Get().Update(func(c *config.Config) {
+	return a.cfg.Update(func(c *config.Config) {
 		c.App = cfg.App
 		c.Zapret = cfg.Zapret
 		c.TGProxy = cfg.TGProxy
@@ -87,13 +116,30 @@ func (a *App) SaveConfig(cfg *config.Config) error {
 
 // Zapret
 func (a *App) GetStrategies() []zapret.Strategy {
-	return zapret.GetRegistry().List()
+	if a.registry == nil {
+		return nil
+	}
+	return a.registry.List()
+}
+
+func (a *App) IsValidStrategy(id string) bool {
+	if id == "" {
+		return true
+	}
+	if a.registry == nil {
+		return true
+	}
+	_, ok := a.registry.Find(id)
+	return ok
 }
 
 func (a *App) GetZapretStatus() map[string]interface{} {
-	cfg := config.Get()
+	cfg := a.cfg.Clone()
 	svcState, stratName, _ := zapret.GetServiceStatus()
-	procRunning := zapret.GetRunner().IsRunning()
+	procRunning := false
+	if a.runner != nil {
+		procRunning = a.runner.IsRunning()
+	}
 
 	isRunning := svcState == "RUNNING" || procRunning
 
@@ -111,11 +157,15 @@ func (a *App) GetZapretStatus() map[string]interface{} {
 
 func (a *App) IsZapretRunning() bool {
 	svcState, _, _ := zapret.GetServiceStatus()
-	return svcState == "RUNNING" || zapret.GetRunner().IsRunning()
+	procRunning := false
+	if a.runner != nil {
+		procRunning = a.runner.IsRunning()
+	}
+	return svcState == "RUNNING" || procRunning
 }
 
 func (a *App) StartZapret(strategyID string) error {
-	cfg := config.Get()
+	cfg := a.cfg.Clone()
 	if strategyID == "" {
 		strategyID = cfg.Zapret.Strategy
 	}
@@ -126,7 +176,9 @@ func (a *App) StartZapret(strategyID string) error {
 	_ = zapret.SetIPSetMode(a.listsDir, cfg.Zapret.IPSetMode)
 
 	// Stop any previously running process runner for this app before starting
-	_ = zapret.GetRunner().Stop()
+	if a.runner != nil {
+		_ = a.runner.Stop()
+	}
 
 	if cfg.Zapret.ServiceMode {
 		status, _, _ := zapret.GetServiceStatus()
@@ -163,7 +215,10 @@ func (a *App) StartZapret(strategyID string) error {
 	}
 
 	// Portable process runner
-	err := zapret.GetRunner().Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
+	if a.runner == nil {
+		return fmt.Errorf("process runner is not initialized")
+	}
+	err := a.runner.Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
 	if err != nil {
 		logger.Log("[Zapret] Ошибка запуска процесса runner: %v", err)
 		return err
@@ -174,7 +229,9 @@ func (a *App) StartZapret(strategyID string) error {
 
 func (a *App) StopZapret() error {
 	logger.Log("[Zapret] Запрос остановки...")
-	_ = zapret.GetRunner().Stop()
+	if a.runner != nil {
+		_ = a.runner.Stop()
+	}
 	_ = zapret.StopService()
 	time.Sleep(200 * time.Millisecond)
 	logger.Log("[Zapret] Остановка завершена.")
@@ -183,7 +240,10 @@ func (a *App) StopZapret() error {
 
 func (a *App) ForceKillZapret() error {
 	logger.Log("[Zapret] Аварийный сброс: Kill winws.exe...")
-	errRunner := zapret.GetRunner().Stop()
+	var errRunner error
+	if a.runner != nil {
+		errRunner = a.runner.Stop()
+	}
 	errSvc := zapret.StopService()
 	errKill := runHidden("taskkill", "/IM", "winws.exe", "/F", "/T")
 	time.Sleep(200 * time.Millisecond)
@@ -203,12 +263,23 @@ func (a *App) Shutdown() {
 		logger.Log("[App] ===================================================")
 		logger.Log("[App] Завершение работы: остановка Zapret, tg-ws-proxy и всех зависимостей...")
 
+		// 0. Остановка одиночного бенчмарка (если активен)
+		a.benchMu.Lock()
+		if a.benchStatus.Running {
+			a.benchStatus.Running = false
+			a.benchStatus.Done = true
+			a.benchStatus.Error = "aborted by shutdown"
+		}
+		a.benchMu.Unlock()
+
 		// 1. Остановка авто-тестирования/бенчмарка (если активно)
 		zapret.StopAutoBenchmark()
 
 		// 2. Остановка runner-процесса Zapret (winws.exe)
 		logger.Log("[App] Остановка фонового процесса Zapret (winws.exe)...")
-		_ = zapret.GetRunner().Stop()
+		if a.runner != nil {
+			_ = a.runner.Stop()
+		}
 
 		// 3. Остановка системной службы Windows zapret (если активна)
 		logger.Log("[App] Остановка системной службы Windows zapret...")
@@ -251,7 +322,7 @@ func (a *App) ResetDrivers() error {
 }
 
 func (a *App) InstallZapretService(strategyID string) error {
-	cfg := config.Get()
+	cfg := a.cfg.Clone()
 	_ = zapret.SetIPSetMode(a.listsDir, cfg.Zapret.IPSetMode)
 	if !platform.IsAdmin() {
 		return platform.RunAsAdmin("--install-service", strategyID)
@@ -268,8 +339,11 @@ func (a *App) RemoveZapretService() error {
 
 // Telegram Proxy
 func (a *App) StartTGProxy() error {
-	cfg := config.Get()
-	return tgproxy.GetServer().Start(
+	if a.tgServer == nil {
+		return fmt.Errorf("tgproxy server is not initialized")
+	}
+	cfg := a.cfg.Clone()
+	return a.tgServer.Start(
 		cfg.TGProxy.Host,
 		cfg.TGProxy.Port,
 		cfg.TGProxy.Secret,
@@ -282,15 +356,24 @@ func (a *App) StartTGProxy() error {
 }
 
 func (a *App) StopTGProxy() error {
-	return tgproxy.GetServer().Stop()
+	if a.tgServer == nil {
+		return nil
+	}
+	return a.tgServer.Stop()
 }
 
 func (a *App) GetTGProxyStatus() bool {
-	return tgproxy.GetServer().IsRunning()
+	if a.tgServer == nil {
+		return false
+	}
+	return a.tgServer.IsRunning()
 }
 
 func (a *App) GetTGProxyLink() string {
-	return tgproxy.GetServer().GetProxyLink()
+	if a.tgServer == nil {
+		return ""
+	}
+	return a.tgServer.GetProxyLink()
 }
 
 func (a *App) PingTelegramDCs() map[string]float64 {
@@ -316,7 +399,7 @@ func (a *App) PingTelegramDCs() map[string]float64 {
 
 // Tester & Diagnostics
 func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup string) zapret.BenchmarkResult {
-	cfg := config.Get()
+	cfg := a.cfg.Clone()
 	if strategyID == "" {
 		strategyID = cfg.Zapret.Strategy
 	}
@@ -333,15 +416,18 @@ func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup
 	_ = a.StopZapret()
 	time.Sleep(300 * time.Millisecond)
 
-	strat, ok := zapret.GetRegistry().Find(strategyID)
 	stratName := strategyID
-	if ok && strat != nil {
-		stratName = strat.Name
+	if a.registry != nil {
+		if strat, ok := a.registry.Find(strategyID); ok && strat != nil {
+			stratName = strat.Name
+		}
 	}
 
 	// 2. Временно запускаем проверяемую стратегию
 	logger.Log("[Benchmark] Запуск стратегии '%s' для замера доступности...", stratName)
-	_ = zapret.GetRunner().Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
+	if a.runner != nil {
+		_ = a.runner.Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
+	}
 	time.Sleep(800 * time.Millisecond)
 
 	// 3. Выполняем проверку доступности целей
@@ -358,14 +444,47 @@ func (a *App) RunStrategyBenchmark(strategyID string, method string, targetGroup
 	// 4. Обязательно завершаем стратегию после проверки - запрет остается остановленным
 	logger.Log("[Benchmark] Тест стратегии '%s' завершен (%d/%d доступно). Запрет остановлен, выбор за пользователем.",
 		stratName, res.SuccessCount, res.TotalCount)
-	_ = zapret.GetRunner().Stop()
+	if a.runner != nil {
+		_ = a.runner.Stop()
+	}
 	time.Sleep(200 * time.Millisecond)
 
 	return res
 }
 
+func (a *App) StartSingleBenchmark(strategyID string, method string, targetGroup string) error {
+	a.benchMu.Lock()
+	if a.benchStatus.Running {
+		a.benchMu.Unlock()
+		return fmt.Errorf("тестирование стратегии уже выполняется")
+	}
+	a.benchStatus = SingleBenchmarkStatus{
+		Running:    true,
+		Done:       false,
+		StrategyID: strategyID,
+	}
+	a.benchMu.Unlock()
+
+	go func() {
+		res := a.RunStrategyBenchmark(strategyID, method, targetGroup)
+		a.benchMu.Lock()
+		a.benchStatus.Running = false
+		a.benchStatus.Done = true
+		a.benchStatus.Result = &res
+		a.benchMu.Unlock()
+	}()
+
+	return nil
+}
+
+func (a *App) GetSingleBenchmarkStatus() SingleBenchmarkStatus {
+	a.benchMu.RLock()
+	defer a.benchMu.RUnlock()
+	return a.benchStatus
+}
+
 func (a *App) StartAutoBenchmark(method string, targetGroup string) error {
-	cfg := config.Get()
+	cfg := a.cfg.Clone()
 	if method == "" {
 		method = "all"
 	}
@@ -412,7 +531,7 @@ func (a *App) SetIPSetMode(mode string) error {
 	if err := zapret.SetIPSetMode(a.listsDir, mode); err != nil {
 		return err
 	}
-	return config.Get().Update(func(c *config.Config) {
+	return a.cfg.Update(func(c *config.Config) {
 		c.Zapret.IPSetMode = mode
 	})
 }
@@ -432,8 +551,8 @@ func (a *App) PerformAppUpdate(downloadURL string) error {
 
 func (a *App) UpdateAssets() (*updater.AssetUpdateSummary, error) {
 	summary, err := updater.UpdateUpstreamAssets(a.listsDir, a.appDir)
-	if err == nil {
-		_ = zapret.GetRegistry().Load()
+	if err == nil && a.registry != nil {
+		_ = a.registry.Load()
 	}
 	return summary, err
 }
@@ -454,7 +573,7 @@ func (a *App) SetAutostartApp(enabled bool) error {
 	if err := config.SetAppAutostart(enabled); err != nil {
 		return err
 	}
-	return config.Get().Update(func(c *config.Config) {
+	return a.cfg.Update(func(c *config.Config) {
 		c.App.AutostartApp = enabled
 	})
 }
@@ -484,13 +603,17 @@ func (a *App) GenerateDebugReport() string {
 	b.WriteString(fmt.Sprintf("ОС: %s (%s)\n", runtime.GOOS, runtime.GOARCH))
 	b.WriteString(fmt.Sprintf("Права администратора: %v\n", platform.IsAdmin()))
 
-	cfg := config.Get()
+	cfg := a.cfg.Clone()
 	b.WriteString(fmt.Sprintf("Конфигурация: strategy=%s, service_mode=%v, autostart=%v\n",
 		cfg.Zapret.Strategy, cfg.Zapret.ServiceMode, cfg.App.AutostartApp))
 
 	svcState, svcStrat, _ := zapret.GetServiceStatus()
 	b.WriteString(fmt.Sprintf("Служба zapret: состояние=%s, стратегия=%s\n", svcState, svcStrat))
-	b.WriteString(fmt.Sprintf("Процесс runner активен: %v\n", zapret.GetRunner().IsRunning()))
+	procRunning := false
+	if a.runner != nil {
+		procRunning = a.runner.IsRunning()
+	}
+	b.WriteString(fmt.Sprintf("Процесс runner активен: %v\n", procRunning))
 
 	if runtime.GOOS == "windows" {
 		// Query WinDivert driver status

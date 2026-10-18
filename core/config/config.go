@@ -12,7 +12,7 @@ import (
 	"sync"
 )
 
-const Version = "1.3.2"
+const Version = "1.3.3"
 const DefaultGithubRepo = "selfdestroyer/Zapretify"
 
 var (

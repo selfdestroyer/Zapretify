@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          check-latest: true
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Go Test with Race Detector
+        run: go test -race -v ./...
+
+  build-windows:
+    name: Build Windows amd64
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          check-latest: true
+
+      - name: Compile Windows amd64 binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w -H=windowsgui" -o dist/Zapretify.exe .
+          cd dist
+          sha256sum Zapretify.exe > SHA256SUMS.txt
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zapretify-windows-amd64
+          path: dist/

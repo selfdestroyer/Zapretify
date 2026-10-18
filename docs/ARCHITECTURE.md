@@ -137,24 +137,64 @@ graph TD
 
 ---
 
+### 3.6. Архитектура внедрения зависимостей (Dependency Injection)
+- Структура `App` инкапсулирует состояние и зависимости приложения:
+  - `cfg *config.Config` — конфигурационный профиль;
+  - `runner *zapret.ProcessRunner` — жизненный цикл фонового процесса `winws.exe`;
+  - `registry *zapret.StrategyRegistry` — реестр доступных стратегий десинхронизации;
+  - `tgServer *tgproxy.Server` — встроенный сервер MTProto WebSocket прокси.
+- Конструктор `NewAppWith(cfg, runner, registry, tgServer)` позволяет изолированно создавать экземпляры приложения в unit-тестах с использованием mock-объектов и `httptest.Server`, без глобальных побочных эффектов.
+
+### 3.7. Модель безопасности локального API (`security_middleware.go`)
+- **Защита от DNS Rebinding**:
+  - Строгая валидация заголовка `Host`. Разрешены только `127.0.0.1:<port>` и `localhost:<port>`. Любые внешние домены отклоняются с кодом `403 Forbidden`.
+- **Защита от CSRF и межсайтовых запросов из браузера**:
+  - Проверка заголовков `Origin` и `Sec-Fetch-Site`. Запросы с происхождением `null` (песочницы iframe, file URI) и `cross-site` блокируются.
+- **Сессионная аутентификация**:
+  - При старте генерируется криптографически стойкий 16-байтный случайный токен сессии (`sessionToken`), передаваемый WebView2 через query-параметр при инициализации.
+  - Все последующие AJAX/Fetch вызовы к `/api/*` обязаны передавать заголовок `X-Zapretify-Token`. Вызовы без токена или с неверным токеном отклоняются с кодом `401 Unauthorized`.
+- **Защита от отказа в обслуживании (DoS)**:
+  - Ограничение размера тела запросов: не более 1 МБ для конфигурации (`/api/config`) и не более 5 МБ для списков (`/api/lists`).
+  - Строгая валидация HTTP методов: мутационные маршруты требуют `POST` (возвращая `405 Method Not Allowed` при `GET`), а маршруты чтения требуют `GET`.
+
+---
+
 ## 4. Спецификация внутреннего REST API (`api.go`)
 
 | Метод | Эндпоинт | Описание |
 |---|---|---|
-| `GET` | `/api/status` | Статус Zapret, TG-прокси и фоновой службы |
-| `GET` | `/api/config` | Текущие настройки приложения |
-| `POST` | `/api/config` | Сохранение настроек (`config.json`) |
-| `GET` | `/api/strategies` | Список доступных стратегий с описанием и параметрами |
-| `POST` | `/api/zapret/start` | Запуск `winws.exe` с выбранной стратегией |
-| `POST` | `/api/zapret/stop` | Остановка процесса `winws.exe` |
-| `POST` | `/api/tgproxy/start` | Запуск локального MTProto WebSocket прокси |
-| `POST` | `/api/tgproxy/stop` | Остановка локального MTProto WebSocket прокси |
-| `POST` | `/api/benchmark` | Старт тестирования стратегий |
-| `POST` | `/api/benchmark/cancel` | Отмена идущего тестирования |
-| `GET` | `/api/benchmark/status` | Получение результатов автотеста |
-| `POST` | `/api/updater/assets` | Синхронизация списков и стратегий из Flowseal |
-| `GET` | `/api/lists?file=...` | Чтение содержимого файла списка хостов |
-| `POST` | `/api/lists?file=...` | Сохранение изменений в файле списка хостов |
-| `GET` | `/api/logs` | Чтение последних строк лога `zapretify.log` |
-| `POST` | `/api/logs/clear` | Очистка файла `zapretify.log` |
-| `POST` | `/api/app/force-kill` | Принудительное завершение всех процессов и драйвера |
+| `GET` | `/api/status` | Статус Zapret, TG-прокси, версии и ссылки подключения |
+| `GET` | `/api/config` | Текущая конфигурация приложения (`config.json`) |
+| `POST` | `/api/config` | Сохранение настроек (поддержка частичного обновления, лимит 1 МБ) |
+| `GET` | `/api/zapret/strategies` | Список доступных стратегий Flowseal с параметрами |
+| `POST` | `/api/zapret/start?strategy=...` | Запуск `winws.exe` с выбранной стратегией |
+| `POST` | `/api/zapret/stop` | Остановка процесса или службы Zapret |
+| `POST` | `/api/zapret/install-service?strategy=...` | Установка системной службы Windows zapret |
+| `POST` | `/api/zapret/remove-service` | Удаление системной службы Windows zapret |
+| `POST` | `/api/zapret/force-kill` | Аварийный сброс: завершение всех процессов `winws.exe` |
+| `POST` | `/api/zapret/reset-drivers` | Полный сброс драйвера ядра WinDivert и связанных служб |
+| `POST` | `/api/zapret/benchmark?strategy=...&method=...&targets=...` | Асинхронный запуск теста одной стратегии (`{"status":"started"}`) |
+| `GET` | `/api/zapret/benchmark/status` | Получение статуса и результатов теста одной стратегии |
+| `POST` | `/api/zapret/benchmark-all?method=...&targets=...` | Асинхронный запуск бенчмарка всех стратегий |
+| `GET` | `/api/zapret/benchmark-all/status` | Опрос прогресса и лидерборда бенчмарка всех стратегий |
+| `GET` | `/api/zapret/targets?group=...` | Получение списка контрольных адресов по группам |
+| `POST` | `/api/zapret/open-test-log` | Открытие файла `test_results.txt` в системном редакторе |
+| `GET` | `/api/zapret/test-log` | Чтение содержимого `test_results.txt` |
+| `GET` | `/api/zapret/ipset-mode` | Получение текущего режима IPSet (`none`, `loaded`, `any`) |
+| `POST` | `/api/zapret/ipset-mode?mode=...` | Переключение режима IPSet |
+| `POST` | `/api/tg/start` | Запуск локального MTProto WebSocket прокси-сервера |
+| `POST` | `/api/tg/stop` | Остановка локального MTProto WebSocket прокси-сервера |
+| `GET` | `/api/tg/ping` | Замер задержки (RTT) до дата-центров Telegram (DC1–DC5) |
+| `GET` | `/api/diagnostics` | Проверка TCP Timestamps, WinDivert и конфликтов GoodbyeDPI |
+| `POST` | `/api/platform/restart-admin` | Перезапуск приложения с запросом прав администратора |
+| `POST` | `/api/platform/fix-tcp` | Автоматическая оптимизация сетевого стека Windows (TCP Timestamps) |
+| `GET` | `/api/updater/check` | Проверка наличия новой версии приложения на GitHub |
+| `POST` | `/api/updater/assets` | Синхронизация хост-листов и стратегий из upstream Flowseal |
+| `GET` | `/api/lists?file=...` | Чтение содержимого хост-листа |
+| `POST` | `/api/lists?file=...` | Сохранение хост-листа (белый список разрешенных файлов) |
+| `GET` | `/api/logs` | Чтение последних строк журнала `zapretify.log` |
+| `POST` | `/api/logs/clear` | Очистка журнала событий |
+| `GET` | `/api/debug-report` | Формирование сводного диагностического отчета для отладки |
+| `POST` | `/api/open-url?url=...` | Безопасное открытие внешнего URL (проверка разрешенных хостов) |
+| `POST` | `/api/app/force-exit` | Корректное завершение работы приложения со всеми дочерними службами |
+

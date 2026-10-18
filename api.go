@@ -48,6 +48,17 @@ func requirePost(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+func requireGet(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		writeJSONStatus(w, http.StatusMethodNotAllowed, map[string]string{
+			"status": "error",
+			"error":  "Method Not Allowed: GET is required",
+		})
+		return false
+	}
+	return true
+}
+
 func validStrategy(id string) bool {
 	if id == "" {
 		return true
@@ -128,6 +139,9 @@ func isAllowedURL(u *url.URL) bool {
 
 func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		status := map[string]interface{}{
 			"version":  config.Version,
 			"zapret":   app.GetZapretStatus(),
@@ -160,7 +174,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 				return
 			}
 
-			if cfgCopy.Zapret.Strategy != "" && !validStrategy(cfgCopy.Zapret.Strategy) {
+			if cfgCopy.Zapret.Strategy != "" && !app.IsValidStrategy(cfgCopy.Zapret.Strategy) {
 				badRequest(w, "Invalid zapret strategy ID: strategy not found in registry")
 				return
 			}
@@ -180,6 +194,9 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/zapret/strategies", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		writeJSON(w, app.GetStrategies())
 	})
 
@@ -188,7 +205,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		stratID := r.URL.Query().Get("strategy")
-		if !validStrategy(stratID) {
+		if !app.IsValidStrategy(stratID) {
 			badRequest(w, "Invalid strategy ID")
 			return
 		}
@@ -225,7 +242,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		stratID := r.URL.Query().Get("strategy")
-		if !validStrategy(stratID) {
+		if !app.IsValidStrategy(stratID) {
 			badRequest(w, "Invalid strategy ID")
 			return
 		}
@@ -287,7 +304,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		stratID := r.URL.Query().Get("strategy")
-		if !validStrategy(stratID) {
+		if !app.IsValidStrategy(stratID) {
 			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid strategy ID"})
 			return
 		}
@@ -301,8 +318,19 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid benchmark targets. Allowed: all, yt_discord, blockcheck"})
 			return
 		}
-		res := app.RunStrategyBenchmark(stratID, method, targets)
-		writeJSON(w, res)
+		err := app.StartSingleBenchmark(stratID, method, targets)
+		if err != nil {
+			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]string{"status": "started"})
+	})
+
+	mux.HandleFunc("/api/zapret/benchmark/status", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
+		writeJSON(w, app.GetSingleBenchmarkStatus())
 	})
 
 	mux.HandleFunc("/api/zapret/benchmark-all", func(w http.ResponseWriter, r *http.Request) {
@@ -328,10 +356,16 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/zapret/benchmark-all/status", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		writeJSON(w, app.GetAutoBenchmarkStatus())
 	})
 
 	mux.HandleFunc("/api/zapret/targets", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		group := r.URL.Query().Get("group")
 		if !validBenchmarkTargetGroup(group) {
 			writeJSONStatus(w, http.StatusBadRequest, map[string]string{"status": "error", "error": "Invalid target group. Allowed: all, yt_discord, blockcheck"})
@@ -353,6 +387,9 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/zapret/test-log", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		content, err := app.GetTestLog()
 		if err != nil {
 			writeJSONStatus(w, http.StatusNotFound, map[string]string{"status": "error", "error": err.Error()})
@@ -412,10 +449,16 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/tg/ping", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		writeJSON(w, app.PingTelegramDCs())
 	})
 
 	mux.HandleFunc("/api/diagnostics", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		writeJSON(w, app.GetDiagnostics())
 	})
 
@@ -444,6 +487,9 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/updater/check", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		res, err := app.CheckAppUpdate()
 		if err != nil {
 			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
@@ -497,6 +543,9 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		writeJSON(w, map[string]interface{}{"lines": app.GetLogs()})
 	})
 
@@ -512,6 +561,9 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 	})
 
 	mux.HandleFunc("/api/debug-report", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
 		writeJSON(w, map[string]string{"report": app.GenerateDebugReport()})
 	})
 

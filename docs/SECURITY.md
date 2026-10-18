@@ -4,7 +4,8 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 1.3.2 | :white_check_mark: | Current release (Phase 2 reliability, thread-safe config, and hardening) |
+| 1.3.3 | :white_check_mark: | Current release (Phase 4 testing, DI, async benchmark, CI, and hardening) |
+| 1.3.2 | :white_check_mark: | Supported |
 | 1.3.1 | :white_check_mark: | Process monitoring and migration |
 | 1.3.0 | :white_check_mark: | Hardened local API security |
 | < 1.3.0 | :x: | Recommended to upgrade |

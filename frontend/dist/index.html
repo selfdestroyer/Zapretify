@@ -1133,7 +1133,41 @@
       try {
         const url = `/api/zapret/benchmark?strategy=${encodeURIComponent(strat)}&method=${encodeURIComponent(method)}&targets=${encodeURIComponent(targets)}`;
         const res = await fetch(url, { method: 'POST' });
-        const data = await res.json();
+        const startData = await res.json();
+        if (startData.status !== 'started') {
+          throw new Error(startData.error || 'Не удалось запустить тест');
+        }
+
+        // Poll /api/zapret/benchmark/status until done
+        const data = await new Promise((resolve, reject) => {
+          let attempts = 0;
+          const pollTimer = setInterval(async () => {
+            attempts++;
+            try {
+              const statusRes = await fetch('/api/zapret/benchmark/status');
+              const statusData = await statusRes.json();
+              if (statusData.error) {
+                clearInterval(pollTimer);
+                reject(new Error(statusData.error));
+                return;
+              }
+              if (statusData.done && statusData.result) {
+                clearInterval(pollTimer);
+                resolve(statusData.result);
+                return;
+              }
+              // Safety timeout: 5 minutes (600 attempts at 500ms)
+              if (attempts > 600) {
+                clearInterval(pollTimer);
+                reject(new Error('Превышено время ожидания тестирования (5 минут)'));
+                return;
+              }
+            } catch (err) {
+              clearInterval(pollTimer);
+              reject(err);
+            }
+          }, 500);
+        });
         
         let html = '';
         (data.results || []).forEach(r => {
