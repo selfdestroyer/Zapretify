@@ -291,6 +291,13 @@ func (a *App) StartZapret(strategyID string) error {
 	if a.runner == nil {
 		return fmt.Errorf("process runner is not initialized")
 	}
+	// Тот же фильтр WinDivert может держать служба zapret (запущена, хотя режим службы выключен, или
+	// не смогла стартовать выше) либо winws.exe из нашей папки bin, оставшийся от прошлого сеанса.
+	// Тогда новый winws сразу завершается с «already running with the same filter». StopService
+	// останавливает службу и завершает только winws.exe из a.binDir; чужие копии не трогаются.
+	if err := zapret.StopService(a.binDir); err != nil {
+		logger.Log("[Zapret] Не удалось освободить фильтр перед запуском: %v", err)
+	}
 	err := a.runner.Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
 	if err != nil {
 		logger.Log("[Zapret] Ошибка запуска процесса runner: %v", err)
@@ -686,6 +693,35 @@ func (a *App) GetAutoBenchmarkStatus() zapret.AutoBenchmarkStatus {
 	return zapret.GetAutoBenchmarkStatus()
 }
 
+// StopAutoBenchmark прерывает подбор; прежнее состояние Zapret вернёт onFinish из StartAutoBenchmark.
+func (a *App) StopAutoBenchmark() {
+	logger.Log("[AutoBenchmark] Запрошена остановка подбора стратегий")
+	zapret.StopAutoBenchmark()
+}
+
+func (a *App) GetLastBenchmark() (*zapret.LastBenchmark, error) {
+	return zapret.LoadLastBenchmark(a.appDir)
+}
+
+// BenchmarkActivity — короткая сводка для /api/status: главный экран показывает «Подбор · N из M»,
+// не опрашивая отдельно статус подбора.
+type BenchmarkActivity struct {
+	Running bool   `json:"running"`
+	Mode    string `json:"mode,omitempty"` // "all" — подбор, "one" — проверка одной стратегии
+	Tested  int    `json:"tested"`
+	Total   int    `json:"total"`
+}
+
+func (a *App) GetBenchmarkActivity() BenchmarkActivity {
+	if st := zapret.GetAutoBenchmarkStatus(); st.Running {
+		return BenchmarkActivity{Running: true, Mode: "all", Tested: st.TestedCount, Total: st.TotalStrategies}
+	}
+	if a.isBenchmarkRunning() {
+		return BenchmarkActivity{Running: true, Mode: "one"}
+	}
+	return BenchmarkActivity{}
+}
+
 func (a *App) GetTargetsByGroup(group string) []zapret.TargetEndpoint {
 	return zapret.GetTargetsByGroup(group)
 }
@@ -775,7 +811,7 @@ func (a *App) ReadList(filename string) (string, error) {
 
 func (a *App) SaveList(filename string, content string) error {
 	mgr := zapret.NewListManager(a.listsDir)
-	return mgr.WriteRaw(filename, content)
+	return mgr.WriteRaw(filename, zapret.EnsureNotEmptyUserList(filename, content))
 }
 
 // Autostart

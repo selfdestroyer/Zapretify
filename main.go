@@ -173,7 +173,8 @@ func main() {
 	// 5. Run Native Desktop Window
 	cfg := config.Get()
 	startInTray := *minimized || cfg.App.StartMinimized
-	runGUIWindow(guiURL, "Zapretify", 1060, 700, startInTray, app)
+	// Размер клиентской области в логических пикселях (масштаб 100%), под макет UI 720×380.
+	runGUIWindow(guiURL, "Zapretify", 720, 380, startInTray, app)
 
 	// Clean shutdown when GUI window closes
 	cancel()

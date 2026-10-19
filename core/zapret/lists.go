@@ -118,16 +118,43 @@ func (m *ListManager) ReadDomains(filename string) ([]string, error) {
 	return domains, nil
 }
 
+// userListDefaults — содержимое пользовательских списков по умолчанию. winws не принимает пустой
+// hostlist/ipset, поэтому в файле всегда должна быть хотя бы одна запись-заглушка.
+var userListDefaults = map[string]string{
+	"ipset-exclude-user.txt": "203.0.113.113/32\n",
+	"list-general-user.txt":  "# Never leave this file empty\ndomain.example.abc\n",
+	"list-exclude-user.txt":  "domain.example.abc\n",
+}
+
+// EnsureNotEmptyUserList добавляет запись-заглушку, если пользователь удалил из своего списка
+// все записи. Для остальных файлов содержимое возвращается без изменений.
+func EnsureNotEmptyUserList(filename, content string) string {
+	def, ok := userListDefaults[strings.ToLower(filepath.Base(filename))]
+	if !ok {
+		return content
+	}
+	for _, line := range strings.Split(content, "\n") {
+		if l := strings.TrimSpace(line); l != "" && !strings.HasPrefix(l, "#") {
+			return content
+		}
+	}
+	placeholder := ""
+	for _, line := range strings.Split(def, "\n") {
+		if l := strings.TrimSpace(line); l != "" && !strings.HasPrefix(l, "#") {
+			placeholder = l
+		}
+	}
+	trimmed := strings.TrimRight(content, " \t\r\n")
+	if trimmed != "" {
+		trimmed += "\n"
+	}
+	return trimmed + placeholder + "\n"
+}
+
 func EnsureUserLists(listsDir string) error {
 	_ = os.MkdirAll(listsDir, 0755)
 
-	files := map[string]string{
-		"ipset-exclude-user.txt": "203.0.113.113/32\n",
-		"list-general-user.txt":  "# Never leave this file empty\ndomain.example.abc\n",
-		"list-exclude-user.txt":  "domain.example.abc\n",
-	}
-
-	for name, defaultContent := range files {
+	for name, defaultContent := range userListDefaults {
 		p := filepath.Join(listsDir, name)
 		if _, err := os.Stat(p); os.IsNotExist(err) {
 			if err := os.WriteFile(p, []byte(defaultContent), 0644); err != nil {

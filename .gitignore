@@ -33,3 +33,6 @@ Thumbs.db
 # Local user config (generated on first run; contains Telegram proxy secret)
 /config.json
 config.json.bad
+
+# Local benchmark result (written next to the app)
+/last_benchmark.json

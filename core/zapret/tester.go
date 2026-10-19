@@ -318,7 +318,8 @@ func BenchmarkCurrentStrategy(strategyID string, strategyName string, method str
 		}
 	}
 
-	avgLat := 0.0
+	// -1: ни одна цель не открылась (в интерфейсе это «—», а не «0 мс»).
+	avgLat := -1.0
 	if successes > 0 {
 		avgLat = totalLat / float64(successes)
 	}
@@ -346,6 +347,7 @@ type StrategyScore struct {
 	TotalTargets  int            `json:"total_targets"`
 	AvgLatencyMs  float64        `json:"avg_latency_ms"`
 	Passed        bool           `json:"passed"`
+	StartFailed   bool           `json:"start_failed"` // winws.exe не запустился с этой стратегией
 	Results       []TargetResult `json:"results"`
 	Rank          int            `json:"rank"`
 }
@@ -364,6 +366,7 @@ type AutoBenchmarkStatus struct {
 	TargetGroup      string          `json:"target_group"`
 	Leaderboard      []StrategyScore `json:"leaderboard"`
 	Results          []StrategyScore `json:"results"`
+	Stopped          bool            `json:"stopped"` // подбор остановлен пользователем до конца списка
 	Error            string          `json:"error,omitempty"`
 }
 
@@ -496,7 +499,11 @@ func SaveAutoBenchmarkReport(filePath string, st AutoBenchmarkStatus) error {
 				pct = (best.PassedTargets * 100) / best.TotalTargets
 			}
 			sb.WriteString(fmt.Sprintf("- Результат:           %d из %d адресов доступно (%d%%)\n", best.PassedTargets, best.TotalTargets, pct))
-			sb.WriteString(fmt.Sprintf("- Средний пинг:        %.0f ms\n", best.AvgLatencyMs))
+			if best.AvgLatencyMs >= 0 {
+				sb.WriteString(fmt.Sprintf("- Средний пинг:        %.0f ms\n", best.AvgLatencyMs))
+			} else {
+				sb.WriteString("- Средний пинг:        Таймаут (нет связи)\n")
+			}
 		}
 		sb.WriteString("- Вердикт:             РЕКОМЕНДОВАНО ДЛЯ ВАШЕГО ПРОВАЙДЕРА (Лучший результат)\n")
 	} else {
@@ -623,6 +630,11 @@ func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDi
 					logger.Log("[AutoBenchmark] Итоговый отчет авто-бенчмарка успешно сохранен в: %s", reportPath)
 				}
 			}
+			if appDir != "" && currentStatus.Error == "" && currentStatus.BestStrategyID != "" {
+				if err := SaveLastBenchmark(appDir, LastBenchmarkFromStatus(currentStatus, time.Now())); err != nil {
+					logger.Log("[AutoBenchmark] Не удалось сохранить результат подбора: %v", err)
+				}
+			}
 			logger.Log("[AutoBenchmark] Тестирование всех стратегий завершено!")
 			if onFinish != nil {
 				onFinish()
@@ -630,15 +642,19 @@ func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDi
 		}()
 
 		consecutiveStartFailures := 0
+		anyStarted := false // хотя бы одна стратегия запустилась: значит, winws в принципе работает
+		stopped := false
 
 		var scores []StrategyScore
 		testTargets := GetTargetsByGroup(targetGroup)
 
+	strategyLoop:
 		for i, strat := range strategies {
 			select {
 			case <-ctx.Done():
-				logger.Log("[AutoBenchmark] Авто-бенчмарк отменен.")
-				return
+				logger.Log("[AutoBenchmark] Авто-бенчмарк остановлен пользователем после %d из %d стратегий.", len(scores), len(strategies))
+				stopped = true
+				break strategyLoop
 			default:
 			}
 
@@ -654,10 +670,14 @@ func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDi
 			// измерен БЕЗ обхода блокировок и ввёл бы в заблуждение, поэтому такая стратегия
 			// получает 0 и в журнал пишется причина.
 			var targets []TargetResult
+			startFailed := false
 			if startErr := runner.Start(strat.ID, binDir, listsDir, gameFilterMode, gameTCP, gameUDP); startErr != nil {
 				consecutiveStartFailures++
+				startFailed = true
 				logger.Log("[AutoBenchmark] Не удалось запустить стратегию %s: %v", strat.Name, startErr)
-				if consecutiveStartFailures >= 3 && len(scores) == 0 {
+				// Три неудачных запуска подряд в самом начале означают, что winws не работает вообще
+				// (нет прав, файлов или конфликт WinDivert): дальше проверять бессмысленно.
+				if consecutiveStartFailures >= 3 && !anyStarted {
 					autoBenchMu.Lock()
 					autoBenchStatus.Error = fmt.Sprintf("winws.exe не запускается (3 попытки подряд): %v. Проверьте права администратора, наличие файлов в bin/ и конфликт с другими программами на WinDivert (GoodbyeDPI и др.).", startErr)
 					autoBenchMu.Unlock()
@@ -668,6 +688,7 @@ func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDi
 				}
 			} else {
 				consecutiveStartFailures = 0
+				anyStarted = true
 				// Выполняем проверку целей
 				targets = CheckAllTargets(testTargets, method, 2000*time.Millisecond)
 				_ = runner.Stop()
@@ -682,7 +703,7 @@ func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDi
 				}
 			}
 
-			avgLat := 0.0
+			avgLat := -1.0
 			if successes > 0 {
 				avgLat = totalLat / float64(successes)
 			}
@@ -699,6 +720,7 @@ func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDi
 				TotalTargets:  len(targets),
 				AvgLatencyMs:  avgLat,
 				Passed:        successes >= (len(targets)*7)/10,
+				StartFailed:   startFailed,
 				Results:       targets,
 			}
 			scores = append(scores, score)
@@ -723,25 +745,17 @@ func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDi
 			scores[idx].Rank = idx + 1
 		}
 
+		// Отчёт и последний результат сохраняет defer выше: он срабатывает и при остановке.
 		autoBenchMu.Lock()
 		autoBenchStatus.Leaderboard = scores
 		autoBenchStatus.Results = scores
+		autoBenchStatus.Stopped = stopped
 		if len(scores) > 0 {
 			autoBenchStatus.BestStrategyID = scores[0].StrategyID
 			autoBenchStatus.BestStrategyName = scores[0].StrategyName
 			logger.Log("[AutoBenchmark] 🏆 Лучшая стратегия: %s (%s)", scores[0].StrategyName, scores[0].StrategyID)
 		}
-		finalStatus := autoBenchStatus
 		autoBenchMu.Unlock()
-
-		if appDir != "" {
-			reportPath := filepath.Join(appDir, "test_results.txt")
-			if err := SaveAutoBenchmarkReport(reportPath, finalStatus); err != nil {
-				logger.Log("[AutoBenchmark] Ошибка записи отчета в %s: %v", reportPath, err)
-			} else {
-				logger.Log("[AutoBenchmark] Итоговый отчет авто-бенчмарка успешно сохранен в: %s", reportPath)
-			}
-		}
 	}()
 
 	return nil

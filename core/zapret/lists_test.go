@@ -80,3 +80,18 @@ func TestListManagerPathTraversal(t *testing.T) {
 		})
 	}
 }
+
+func TestEnsureNotEmptyUserList(t *testing.T) {
+	if got := EnsureNotEmptyUserList("list-general-user.txt", "# только комментарий\n\n"); got != "# только комментарий\ndomain.example.abc\n" {
+		t.Fatalf("пустой список должен получить заглушку, получено %q", got)
+	}
+	if got := EnsureNotEmptyUserList("list-general-user.txt", "example.org\n"); got != "example.org\n" {
+		t.Fatalf("непустой список не должен меняться, получено %q", got)
+	}
+	if got := EnsureNotEmptyUserList("ipset-exclude-user.txt", ""); got != "203.0.113.113/32\n" {
+		t.Fatalf("пустой ipset должен получить заглушку, получено %q", got)
+	}
+	if got := EnsureNotEmptyUserList("list-general.txt", ""); got != "" {
+		t.Fatalf("файлы из базы не трогаем, получено %q", got)
+	}
+}

@@ -454,6 +454,9 @@ func trayWndProc(hwnd, msg, wParam, lParam uintptr) uintptr {
 			procDestroyWindow.Call(hwnd)
 			return 0
 		}
+	case WM_DPICHANGED:
+		handleDPIChanged(hwnd, wParam, lParam)
+		return 0
 	case 0x0016: // WM_ENDSESSION
 		if wParam != 0 {
 			if globalApp != nil {
@@ -581,7 +584,10 @@ func runGUIWindow(url string, title string, width int, height int, startMinimize
 	origWndProc = setWindowLongPtr(hwnd, GWLP_WNDPROC, wndProcCallback)
 
 	w.SetTitle(title)
+	// SetSize снимает WS_THICKFRAME/WS_MAXIMIZEBOX (окно фиксированного размера),
+	// а сам размер под DPI выставляет fitWindowToClient.
 	w.SetSize(width, height, webview2.HintFixed)
+	fitWindowToClient(hwnd, width, height)
 	w.Init(`
 		window.open = function(url) {
 			if (url) {

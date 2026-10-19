@@ -253,7 +253,13 @@ func (p *ProcessRunner) Start(
 	select {
 	case <-done:
 		msg := "winws.exe завершился сразу после запуска"
-		if tail := p.lastOutput(); tail != "" {
+		tail := p.lastOutput()
+		if strings.Contains(tail, "already running with the same filter") {
+			// Свои процессы и службу StartZapret уже остановил: значит, это winws из другой папки
+			// (другая копия Zapret, GoodbyeDPI-подобная программа). Без согласия пользователя его не трогаем.
+			msg = "уже запущен другой winws.exe с тем же фильтром (другая копия Zapret или похожая программа). " +
+				"Закройте её или нажмите «Диагностика и сброс» → «Завершить Zapret»"
+		} else if tail != "" {
 			msg += ": " + tail
 		}
 		p.emitLog("Ошибка: " + msg)

@@ -133,3 +133,17 @@ func TestLineWriter(t *testing.T) {
 		t.Fatalf("got %v want %v", got, want)
 	}
 }
+
+func TestRunnerExplainsForeignWinws(t *testing.T) {
+	r, bin := newTestRunner(t, func(string, []string, string) *exec.Cmd {
+		return exec.Command("sh", "-c", "echo 'A copy of winws is already running with the same filter' >&2; exit 1")
+	})
+
+	err := r.Start("general", bin, bin, "disabled", "", "")
+	if err == nil {
+		t.Fatalf("Start must fail when another winws holds the filter")
+	}
+	if !strings.Contains(err.Error(), "другой winws.exe") || !strings.Contains(err.Error(), "Завершить Zapret") {
+		t.Fatalf("error must explain the conflict and the way out, got: %v", err)
+	}
+}

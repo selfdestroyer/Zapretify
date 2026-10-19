@@ -143,10 +143,11 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		status := map[string]interface{}{
-			"version":  config.Version,
-			"zapret":   app.GetZapretStatus(),
-			"tg_proxy": app.GetTGProxyStatus(),
-			"tg_link":  app.GetTGProxyLink(),
+			"version":   config.Version,
+			"zapret":    app.GetZapretStatus(),
+			"tg_proxy":  app.GetTGProxyStatus(),
+			"tg_link":   app.GetTGProxyLink(),
+			"benchmark": app.GetBenchmarkActivity(),
 		}
 		writeJSON(w, status)
 	})
@@ -360,6 +361,27 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		writeJSON(w, app.GetAutoBenchmarkStatus())
+	})
+
+	mux.HandleFunc("/api/zapret/benchmark-all/stop", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
+		app.StopAutoBenchmark()
+		writeJSON(w, map[string]string{"status": "stopping"})
+	})
+
+	mux.HandleFunc("/api/zapret/benchmark-all/last", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
+		last, err := app.GetLastBenchmark()
+		if err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
+		// null, если подбор ещё не проводился
+		writeJSON(w, last)
 	})
 
 	mux.HandleFunc("/api/zapret/targets", func(w http.ResponseWriter, r *http.Request) {

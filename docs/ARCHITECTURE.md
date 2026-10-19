@@ -163,7 +163,7 @@ graph TD
 
 | Метод | Эндпоинт | Описание |
 |---|---|---|
-| `GET` | `/api/status` | Статус Zapret, TG-прокси, версии и ссылки подключения |
+| `GET` | `/api/status` | Статус Zapret, TG-прокси, версии, ссылки подключения и активности подбора (`benchmark`) |
 | `GET` | `/api/config` | Текущая конфигурация приложения (`config.json`) |
 | `POST` | `/api/config` | Сохранение настроек (поддержка частичного обновления, лимит 1 МБ) |
 | `GET` | `/api/zapret/strategies` | Список доступных стратегий Flowseal с параметрами |
@@ -177,6 +177,8 @@ graph TD
 | `GET` | `/api/zapret/benchmark/status` | Получение статуса и результатов теста одной стратегии |
 | `POST` | `/api/zapret/benchmark-all?method=...&targets=...` | Асинхронный запуск бенчмарка всех стратегий |
 | `GET` | `/api/zapret/benchmark-all/status` | Опрос прогресса и лидерборда бенчмарка всех стратегий |
+| `POST` | `/api/zapret/benchmark-all/stop` | Остановка подбора; результаты по проверенным стратегиям сохраняются |
+| `GET` | `/api/zapret/benchmark-all/last` | Итог последнего подбора из `last_benchmark.json` (`null`, если подбора не было) |
 | `GET` | `/api/zapret/targets?group=...` | Получение списка контрольных адресов по группам |
 | `POST` | `/api/zapret/open-test-log` | Открытие файла `test_results.txt` в системном редакторе |
 | `GET` | `/api/zapret/test-log` | Чтение содержимого `test_results.txt` |

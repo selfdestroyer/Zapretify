@@ -4,7 +4,8 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 1.3.4 | :white_check_mark: | Current release (installer API hardening, safe uninstall/update, PID-scoped process control) |
+| 1.4.0 | :white_check_mark: | Current release (new compact UI, no external fonts in CSP, saved benchmark result) |
+| 1.3.4 | :white_check_mark: | Supported |
 | 1.3.3 | :white_check_mark: | Supported |
 | 1.3.2 | :white_check_mark: | Supported |
 | 1.3.1 | :white_check_mark: | Process monitoring and migration |

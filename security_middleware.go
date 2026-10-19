@@ -40,7 +40,8 @@ func securityMiddleware(token string, port int, next http.Handler) http.Handler 
 		// 4. Security Headers
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'")
+		// Интерфейс использует системные шрифты, внешние источники не нужны.
+		w.Header().Set("Content-Security-Policy", "default-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'")
 
 		// 5. Session Token Validation (Fail closed: required for everything except GET static assets)
 		isStaticGET := r.Method == http.MethodGet && !strings.HasPrefix(r.URL.Path, "/api/")
