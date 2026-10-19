@@ -387,7 +387,7 @@ build_all.bat
 
 ```text
 Zapretify/
-├── assets/                   # Иконки приложения (.ico, .png, .bmp) и логотипы
+├── assets/                   # Иконка приложения (icon.ico) и логотипы
 ├── bin/                      # Бинарные модули ядра
 │   ├── winws.exe             # Исполняемый файл zapret (bol-van)
 │   ├── WinDivert.dll         # Библиотека перехвата пакетов WinDivert
