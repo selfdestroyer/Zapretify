@@ -2,6 +2,8 @@ package updater
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -30,22 +33,32 @@ type AssetUpdateSummary struct {
 
 // listTitles gives the host lists readable names for the sync report.
 var listTitles = map[string]string{
-	"list-general.txt":  "основной доменный лист",
-	"list-google.txt":   "доменный лист Google",
-	"list-exclude.txt":  "лист исключений доменов",
-	"ipset-exclude.txt": "лист исключений IP",
-	"ipset-all.txt":     "IP-лист",
+	"list-general.txt":     "основной доменный лист",
+	"list-google.txt":      "доменный лист Google",
+	"list-exclude.txt":     "лист исключений доменов",
+	"ipset-exclude.txt":    "лист исключений IP",
+	"ipset-all.txt.backup": "IP-лист IPSet",
 }
 
 // ipsetPlaceholder is what SetIPSetMode writes into ipset-all.txt in "none" mode.
+// Flowseal keeps the same placeholder in lists/ipset-all.txt, so a real list never contains it.
 const ipsetPlaceholder = "203.0.113.113"
+
+// Flowseal repository endpoints; variables so tests can point them at a local server.
+var (
+	flowsealRawBase = "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/"
+	flowsealAPIBase = "https://api.github.com/repos/Flowseal/zapret-discord-youtube/contents/"
+)
 
 var UpstreamAssetURLs = map[string]string{
 	"list-general.txt":  "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-general.txt",
 	"list-google.txt":   "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-google.txt",
 	"list-exclude.txt":  "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-exclude.txt",
 	"ipset-exclude.txt": "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/ipset-exclude.txt",
-	"ipset-all.txt":     "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/ipset-all.txt",
+	// Flowseal's lists/ipset-all.txt is only the IPSet placeholder. The real list is published in
+	// .service/ipset-service.txt (what service.bat "Update IPSet" downloads); it is kept as
+	// ipset-all.txt.backup, which SetIPSetMode copies into ipset-all.txt in "loaded" mode.
+	"ipset-all.txt.backup": "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/.service/ipset-service.txt",
 }
 
 var DefaultStrategyBatchFiles = []string{
@@ -132,8 +145,10 @@ func formatStrategyName(id string) string {
 }
 
 const (
-	maxListBytes  = 8 << 20 // host lists / ipsets
-	maxBatchBytes = 256 << 10
+	maxListBytes    = 8 << 20 // host lists / ipsets
+	maxBatchBytes   = 256 << 10
+	maxBinBytes     = 64 << 10 // fake payloads (bin/*.bin)
+	maxVersionBytes = 64
 )
 
 // fetchLimited downloads a URL and refuses non-200 answers, empty bodies and bodies over the limit.
@@ -211,16 +226,9 @@ func diffListEntries(oldData, newData []byte) (added, removed int) {
 	return added, removed
 }
 
-// currentListContent returns what the local copy of a host list holds. ipset-all.txt may be
-// replaced by the IPSet mode placeholder, in which case the real list lives in the backup.
+// currentListContent returns the local copy of a host list and whether it exists.
 func currentListContent(listsDir, filename string) ([]byte, bool) {
-	p := filepath.Join(listsDir, filename)
-	data, err := os.ReadFile(p)
-	if filename == "ipset-all.txt" && (err != nil || len(bytes.TrimSpace(data)) == 0 || bytes.Contains(data, []byte(ipsetPlaceholder))) {
-		if backup, berr := os.ReadFile(p + ".backup"); berr == nil && len(backup) > 0 {
-			return backup, true
-		}
-	}
+	data, err := os.ReadFile(filepath.Join(listsDir, filename))
 	return data, err == nil
 }
 
@@ -233,15 +241,12 @@ func describeListChange(filename string, existed bool, oldData, newData []byte) 
 		return fmt.Sprintf("Загружен %s (%s)", title, filename)
 	}
 	added, removed := diffListEntries(oldData, newData)
-	var parts []string
+	var parts []string // the caller skips files whose entries did not change
 	if added > 0 {
 		parts = append(parts, fmt.Sprintf("+%d", added))
 	}
 	if removed > 0 {
 		parts = append(parts, fmt.Sprintf("−%d", removed))
-	}
-	if len(parts) == 0 {
-		return fmt.Sprintf("Обновлён %s (%s)", title, filename)
 	}
 	return fmt.Sprintf("Обновлён %s (%s): %s %s", title, filename, strings.Join(parts, " / "),
 		pluralRu(added+removed, "запись", "записи", "записей"))
@@ -259,6 +264,132 @@ func pluralRu(n int, one, few, many string) string {
 		return few
 	}
 	return many
+}
+
+// gitBlobSHA returns the git object id of data, the same value GitHub reports as "sha" for a file.
+func gitBlobSHA(data []byte) string {
+	h := sha1.New()
+	fmt.Fprintf(h, "blob %d\x00", len(data))
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+var binRefPattern = regexp.MustCompile(`%BIN%([^"\s]+)`)
+
+// referencedBins lists the bin/ files a strategy argument chain points to.
+func referencedBins(rawArgs string) []string {
+	var names []string
+	for _, m := range binRefPattern.FindAllStringSubmatch(rawArgs, -1) {
+		names = append(names, m[1])
+	}
+	return names
+}
+
+// validBinName accepts plain *.bin file names only: fake payloads, never executables or paths.
+func validBinName(name string) bool {
+	return strings.HasSuffix(strings.ToLower(name), ".bin") && filepath.Base(name) == name &&
+		!strings.ContainsAny(name, `/\:`) && !strings.Contains(name, "..")
+}
+
+type upstreamBin struct {
+	Name string `json:"name"`
+	SHA  string `json:"sha"`
+	Size int64  `json:"size"`
+}
+
+// listUpstreamBins asks the GitHub API for the files in Flowseal's bin/ directory.
+func listUpstreamBins(client *http.Client) ([]upstreamBin, error) {
+	req, err := http.NewRequest("GET", flowsealAPIBase+"bin", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "Zapretify-Updater/"+CurrentVersion)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("http %d", resp.StatusCode)
+	}
+	var items []upstreamBin
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&items); err != nil {
+		return nil, err
+	}
+	var bins []upstreamBin
+	for _, it := range items {
+		if validBinName(it.Name) && it.Size > 0 && it.Size <= maxBinBytes {
+			bins = append(bins, it)
+		}
+	}
+	return bins, nil
+}
+
+// syncFakeBins brings bin/*.bin fake payloads in line with Flowseal. With the GitHub API it adds
+// missing files and replaces changed ones, checking each download against the git blob sha.
+// Without the API it only fetches the files the strategies need and the user does not have.
+func syncFakeBins(client *http.Client, binDir string, needed map[string]bool, summary *AssetUpdateSummary) (added, updated []string) {
+	_ = os.MkdirAll(binDir, 0755)
+	type target struct {
+		name, sha string
+	}
+	var targets []target
+	if bins, err := listUpstreamBins(client); err == nil {
+		for _, b := range bins {
+			targets = append(targets, target{b.Name, b.SHA})
+		}
+	} else {
+		logger.Log("[Updater] Список bin/ из GitHub API недоступен (%v), докачиваю только недостающие файлы.", err)
+		for name := range needed {
+			if _, statErr := os.Stat(filepath.Join(binDir, name)); statErr != nil {
+				targets = append(targets, target{name, ""})
+			}
+		}
+	}
+	sort.Slice(targets, func(i, j int) bool { return targets[i].name < targets[j].name })
+
+	for _, t := range targets {
+		local, readErr := os.ReadFile(filepath.Join(binDir, t.name))
+		existed := readErr == nil
+		if existed && (t.sha == "" || gitBlobSHA(local) == t.sha) {
+			continue
+		}
+		body, err := fetchLimited(client, flowsealRawBase+"bin/"+url.PathEscape(t.name), maxBinBytes)
+		if err == nil && t.sha != "" && gitBlobSHA(body) != t.sha {
+			err = fmt.Errorf("контрольная сумма не совпала с GitHub")
+		}
+		if err == nil {
+			err = writeFileAtomic(filepath.Join(binDir, t.name), body, 0644)
+		}
+		if err != nil {
+			logger.Log("[Updater] bin/%s: %v", t.name, err)
+			summary.FailedFiles = append(summary.FailedFiles, "bin/"+t.name)
+			continue
+		}
+		summary.UpdatedFiles = append(summary.UpdatedFiles, "bin/"+t.name)
+		if existed {
+			updated = append(updated, t.name)
+		} else {
+			added = append(added, t.name)
+		}
+	}
+	return added, updated
+}
+
+var flowsealVersionPattern = regexp.MustCompile(`^\d+(\.\d+){1,3}$`)
+
+// fetchFlowsealVersion reads the release number Flowseal publishes in .service/version.txt.
+func fetchFlowsealVersion(client *http.Client) string {
+	body, err := fetchLimited(client, flowsealRawBase+".service/version.txt", maxVersionBytes)
+	if err != nil {
+		logger.Log("[Updater] Версия Flowseal недоступна: %v", err)
+		return ""
+	}
+	v := strings.TrimSpace(string(body))
+	if !flowsealVersionPattern.MatchString(v) {
+		return ""
+	}
+	return v
 }
 
 func discoverStrategyBatchFiles(client *http.Client) []string {
@@ -318,6 +449,11 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 			summary.FailedFiles = append(summary.FailedFiles, filename)
 			continue
 		}
+		if filename == "ipset-all.txt.backup" && bytes.Contains(body, []byte(ipsetPlaceholder)) {
+			logger.Log("[Updater] %s: upstream отдал заглушку вместо IP-листа", filename)
+			summary.FailedFiles = append(summary.FailedFiles, filename)
+			continue
+		}
 		oldData, existed := currentListContent(listsDir, filename)
 		if existed && bytes.Equal(oldData, body) {
 			continue
@@ -328,6 +464,11 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 			continue
 		}
 		summary.UpdatedFiles = append(summary.UpdatedFiles, filename)
+		if existed {
+			if added, removed := diffListEntries(oldData, body); added == 0 && removed == 0 {
+				continue // only line endings, comments or order differ: nothing worth reporting
+			}
+		}
 		listChanges = append(listChanges, describeListChange(filename, existed, oldData, body))
 	}
 
@@ -336,6 +477,7 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 	var (
 		stratMu       sync.Mutex
 		parsedResults = make(map[string]string)
+		batFailed     bool
 	)
 
 	var wg sync.WaitGroup
@@ -353,6 +495,7 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 			if err != nil {
 				stratMu.Lock()
 				summary.FailedFiles = append(summary.FailedFiles, filename)
+				batFailed = true
 				stratMu.Unlock()
 				return
 			}
@@ -368,8 +511,43 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 	}
 	wg.Wait()
 
-	// 3. Update strategies.json, only when a strategy was added or its arguments changed
-	var fileData StrategiesData
+	// 3. Sync the fake payloads the strategies refer to (bin/*.bin)
+	binDir := filepath.Join(appDir, "bin")
+	needed := make(map[string]bool)
+	for _, args := range parsedResults {
+		for _, name := range referencedBins(args) {
+			if validBinName(name) {
+				needed[name] = true
+			}
+		}
+	}
+	addedBins, updatedBins := syncFakeBins(client, binDir, needed, summary)
+
+	// A strategy that points to a payload the user still lacks would stop winws from starting:
+	// keep the previous version of such a strategy instead.
+	var skippedStrategies []string
+	for id, args := range parsedResults {
+		for _, name := range referencedBins(args) {
+			if _, err := os.Stat(filepath.Join(binDir, name)); err != nil {
+				logger.Log("[Updater] %s пропущена: нет файла bin/%s", id, name)
+				skippedStrategies = append(skippedStrategies, formatStrategyName(id))
+				summary.FailedFiles = append(summary.FailedFiles, id+".bat")
+				delete(parsedResults, id)
+				break
+			}
+		}
+	}
+	sort.Strings(skippedStrategies)
+
+	// 4. Update strategies.json, only when a strategy or the Flowseal version changed
+	upstreamVersion := ""
+	if !batFailed && len(skippedStrategies) == 0 {
+		upstreamVersion = fetchFlowsealVersion(client)
+	}
+	var (
+		fileData       StrategiesData
+		versionChanged string
+	)
 	if len(parsedResults) > 0 {
 		strategiesPath := filepath.Join(appDir, "strategies.json")
 		if data, err := os.ReadFile(strategiesPath); err == nil {
@@ -378,8 +556,13 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 				fileData = StrategiesData{}
 			}
 		}
-		if fileData.Version == "" {
-			fileData.Version = "1.10.3"
+		if upstreamVersion != "" && upstreamVersion != fileData.Version {
+			if fileData.Version != "" {
+				versionChanged = fmt.Sprintf("Стратегии Flowseal: %s → %s", fileData.Version, upstreamVersion)
+			} else {
+				versionChanged = "Стратегии Flowseal: версия " + upstreamVersion
+			}
+			fileData.Version = upstreamVersion
 		}
 
 		stratIndex := make(map[string]int)
@@ -412,7 +595,7 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 		}
 	}
 
-	if len(summary.AddedStrategies) > 0 || len(summary.UpdatedStrategies) > 0 {
+	if len(summary.AddedStrategies) > 0 || len(summary.UpdatedStrategies) > 0 || versionChanged != "" {
 		strategiesPath := filepath.Join(appDir, "strategies.json")
 		outJSON, err := json.MarshalIndent(fileData, "", "  ")
 		if err == nil {
@@ -426,6 +609,9 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 		}
 	}
 
+	if versionChanged != "" {
+		summary.Changes = append(summary.Changes, versionChanged)
+	}
 	if n := len(summary.AddedStrategies); n > 0 {
 		summary.Changes = append(summary.Changes, fmt.Sprintf("Добавлено %d %s: %s",
 			n, pluralRu(n, "стратегия", "стратегии", "стратегий"), strings.Join(summary.AddedStrategies, ", ")))
@@ -433,6 +619,18 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 	if n := len(summary.UpdatedStrategies); n > 0 {
 		summary.Changes = append(summary.Changes, fmt.Sprintf("Обновлено %d %s: %s",
 			n, pluralRu(n, "стратегия", "стратегии", "стратегий"), strings.Join(summary.UpdatedStrategies, ", ")))
+	}
+	if n := len(skippedStrategies); n > 0 {
+		summary.Changes = append(summary.Changes, fmt.Sprintf("Не обновлено %d %s (не скачались нужные файлы bin): %s",
+			n, pluralRu(n, "стратегия", "стратегии", "стратегий"), strings.Join(skippedStrategies, ", ")))
+	}
+	if n := len(addedBins); n > 0 {
+		summary.Changes = append(summary.Changes, fmt.Sprintf("Добавлено %d %s фейков: %s",
+			n, pluralRu(n, "файл", "файла", "файлов"), strings.Join(addedBins, ", ")))
+	}
+	if n := len(updatedBins); n > 0 {
+		summary.Changes = append(summary.Changes, fmt.Sprintf("Обновлено %d %s фейков: %s",
+			n, pluralRu(n, "файл", "файла", "файлов"), strings.Join(updatedBins, ", ")))
 	}
 	summary.Changes = append(summary.Changes, listChanges...)
 	summary.Changed = len(summary.Changes) > 0

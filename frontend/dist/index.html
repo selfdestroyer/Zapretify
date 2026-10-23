@@ -1743,7 +1743,7 @@ function renderUpAs() {
   else if (A.state === 'done') h = '<div class="row1"><span class="c-ok">' + ico('i-check') + '</span><div><b>' + (A.changed ? 'Базы обновлены' : 'Файлы актуальны') + '</b>' + asLines(A.changes.length ? A.changes : [A.msg]) + '</div></div>';
   else if (A.state === 'partial') h = '<div class="row1"><span class="c-warn">' + ico('i-alert') + '</span><div><b>Обновлено частично</b>' + asLines(A.changes) + '<span class="sm">Не удалось скачать: ' + esc(A.failed.join(', ')) + '.' + (A.changes.length ? '' : ' В остальных файлах изменений нет.') + '</span></div></div>';
   else if (A.state === 'error') h = '<div class="row1"><span class="c-bad">' + ico('i-alert') + '</span><div><b>Ошибка обновления</b><span class="sm">' + esc(A.msg) + '</span></div></div>';
-  else h = '<div class="row1"><span style="color:var(--muted)">' + ico('i-info') + '</span><div>Скачает свежие списки доменов и стратегии из upstream Flowseal. «Мои сайты» и другие ваши списки не изменятся.</div></div>';
+  else h = '<div class="row1"><span style="color:var(--muted)">' + ico('i-info') + '</span><div>Скачает свежие списки доменов, IP-лист, стратегии и файлы фейков из upstream Flowseal. «Мои сайты» и другие ваши списки не изменятся.</div></div>';
   if (el._h !== h) { el._h = h; el.innerHTML = h; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in'); }
   $('#up-sync').classList.toggle('is-pending', A.state === 'running'); setText($('#up-sync span'), A.state === 'running' ? 'Обновляю…' : 'Обновить базы');
 }

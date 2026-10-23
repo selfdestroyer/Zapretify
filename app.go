@@ -778,7 +778,7 @@ func (a *App) StartAssetSync() error {
 					logger.Log("[Updater] Не удалось перечитать strategies.json: %v", loadErr)
 				}
 			}
-			// Downloaded ipset-all.txt replaces the file that stores the IPSet mode: re-apply the mode.
+			// A fresh ipset-all.txt.backup must reach ipset-all.txt in "loaded" mode: re-apply the mode.
 			if modeErr := zapret.SetIPSetMode(a.listsDir, a.cfg.Clone().Zapret.IPSetMode); modeErr != nil {
 				logger.Log("[Updater] Не удалось применить режим IPSet после обновления: %v", modeErr)
 			}

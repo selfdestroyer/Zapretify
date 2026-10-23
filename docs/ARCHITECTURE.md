@@ -120,8 +120,13 @@ graph TD
 
 ### 3.4. Upstream-синхронизатор Flowseal (`core/updater`)
 - **Списки хостов**:
-  - Скачивание `list-general.txt`, `list-google.txt`, `list-exclude.txt`, `ipset-exclude.txt`, `ipset-all.txt` из `raw.githubusercontent.com`.
-  - Атомарная запись через временные файлы (`.download` -> `os.Rename`).
+  - Скачивание `list-general.txt`, `list-google.txt`, `list-exclude.txt`, `ipset-exclude.txt` из `raw.githubusercontent.com`.
+  - IP-лист IPSet берётся из `.service/ipset-service.txt` (тот же источник, что у `service.bat` → «Update IPSet») и сохраняется в `lists/ipset-all.txt.backup`. Сам `ipset-all.txt` у Flowseal — только заглушка `203.0.113.113/32`; его содержимое задаёт режим IPSet (`core/zapret/ipset.go`), который после синхронизации применяется заново.
+  - Файл перезаписывается только при изменении содержимого; атомарная запись через временные файлы (`.download` -> `os.Rename`).
+- **Файлы фейков (`bin/*.bin`)**:
+  - Список берётся из GitHub API (`contents/bin`); недостающие и изменённые файлы скачиваются и сверяются с git blob sha. Скачиваются только `*.bin`, исполняемые файлы и драйверы не обновляются.
+  - Без GitHub API докачиваются только файлы, на которые ссылаются стратегии. Стратегия, которой не хватает файла, не обновляется.
+- **Версия Flowseal** читается из `.service/version.txt` и записывается в поле `version` файла `strategies.json`.
 - **Синхронизация стратегий**:
   - Динамический опрос GitHub API репозитория Flowseal на предмет обнаружения новых пакетных файлов `general*.bat`.
   - Параллельная загрузка содержимого файлов через пул воркеров.

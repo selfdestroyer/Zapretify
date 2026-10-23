@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -122,15 +123,102 @@ func TestDescribeListChange(t *testing.T) {
 	}
 }
 
-func TestCurrentListContentIPSetBackup(t *testing.T) {
+func TestCurrentListContent(t *testing.T) {
 	dir := t.TempDir()
-	_ = os.WriteFile(filepath.Join(dir, "ipset-all.txt"), []byte("203.0.113.113/32\n"), 0644)
 	_ = os.WriteFile(filepath.Join(dir, "ipset-all.txt.backup"), []byte("1.2.3.0/24\n"), 0644)
-	data, ok := currentListContent(dir, "ipset-all.txt")
+	data, ok := currentListContent(dir, "ipset-all.txt.backup")
 	if !ok || string(data) != "1.2.3.0/24\n" {
-		t.Fatalf("expected backup content, got %q (ok=%v)", data, ok)
+		t.Fatalf("got %q (ok=%v)", data, ok)
 	}
 	if _, ok := currentListContent(dir, "list-general.txt"); ok {
 		t.Fatal("missing file must report !ok")
+	}
+}
+
+func TestIPSetSourceIsRealList(t *testing.T) {
+	if _, ok := UpstreamAssetURLs["ipset-all.txt"]; ok {
+		t.Fatal("ipset-all.txt upstream is only the placeholder and must not be synced")
+	}
+	if _, ok := UpstreamAssetURLs["ipset-all.txt.backup"]; !ok {
+		t.Fatal("the real IPSet must be synced into ipset-all.txt.backup")
+	}
+}
+
+func TestGitBlobSHA(t *testing.T) {
+	// Well-known git ids of the empty blob and of "hello\n".
+	if got := gitBlobSHA(nil); got != "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391" {
+		t.Fatalf("empty blob: %s", got)
+	}
+	if got := gitBlobSHA([]byte("hello\n")); got != "ce013625030ba8dba906f756967f9e9ca394464a" {
+		t.Fatalf("hello blob: %s", got)
+	}
+}
+
+func TestReferencedBinsAndNames(t *testing.T) {
+	args := `--dpi-desync-fake-tls="%BIN%stun.bin" --dpi-desync-fake-quic="%BIN%quic_initial_www_google_com.bin" --hostlist="%LISTS%list-google.txt"`
+	got := referencedBins(args)
+	if len(got) != 2 || got[0] != "stun.bin" || got[1] != "quic_initial_www_google_com.bin" {
+		t.Fatalf("referencedBins: %v", got)
+	}
+	for _, bad := range []string{"winws.exe", "WinDivert.dll", "../evil.bin", `a\b.bin`, "x.bin.exe"} {
+		if validBinName(bad) {
+			t.Fatalf("%q must be rejected", bad)
+		}
+	}
+	if !validBinName("tls_clienthello_www_sferum_ru.bin") {
+		t.Fatal("normal fake name rejected")
+	}
+}
+
+func TestSyncFakeBins(t *testing.T) {
+	newFake := []byte("new fake payload")
+	changed := []byte("changed payload")
+	tampered := []byte("tampered")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/bin":
+			_ = json.NewEncoder(w).Encode([]upstreamBin{
+				{Name: "new.bin", SHA: gitBlobSHA(newFake), Size: int64(len(newFake))},
+				{Name: "same.bin", SHA: gitBlobSHA([]byte("same")), Size: 4},
+				{Name: "changed.bin", SHA: gitBlobSHA(changed), Size: int64(len(changed))},
+				{Name: "bad.bin", SHA: gitBlobSHA([]byte("expected")), Size: 8},
+				{Name: "winws.exe", SHA: "x", Size: 10},
+			})
+		case "/raw/bin/new.bin":
+			_, _ = w.Write(newFake)
+		case "/raw/bin/changed.bin":
+			_, _ = w.Write(changed)
+		case "/raw/bin/bad.bin":
+			_, _ = w.Write(tampered)
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	oldRaw, oldAPI := flowsealRawBase, flowsealAPIBase
+	flowsealRawBase, flowsealAPIBase = srv.URL+"/raw/", srv.URL+"/api/"
+	defer func() { flowsealRawBase, flowsealAPIBase = oldRaw, oldAPI }()
+
+	binDir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(binDir, "same.bin"), []byte("same"), 0644)
+	_ = os.WriteFile(filepath.Join(binDir, "changed.bin"), []byte("old"), 0644)
+
+	summary := &AssetUpdateSummary{}
+	added, updated := syncFakeBins(srv.Client(), binDir, nil, summary)
+	if len(added) != 1 || added[0] != "new.bin" {
+		t.Fatalf("added: %v", added)
+	}
+	if len(updated) != 1 || updated[0] != "changed.bin" {
+		t.Fatalf("updated: %v", updated)
+	}
+	if len(summary.FailedFiles) != 1 || summary.FailedFiles[0] != "bin/bad.bin" {
+		t.Fatalf("failed: %v", summary.FailedFiles)
+	}
+	if _, err := os.Stat(filepath.Join(binDir, "bad.bin")); err == nil {
+		t.Fatal("a download with a wrong checksum must not be written")
+	}
+	if _, err := os.Stat(filepath.Join(binDir, "winws.exe")); err == nil {
+		t.Fatal("executables must never be synced")
 	}
 }
