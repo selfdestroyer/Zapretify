@@ -108,3 +108,29 @@ func TestValidRawArgs(t *testing.T) {
 		t.Fatal("newline must be rejected")
 	}
 }
+
+func TestDescribeListChange(t *testing.T) {
+	oldData := []byte("# comment\na.com\nb.com\n")
+	newData := []byte("a.com\nc.com\nd.com\n")
+	got := describeListChange("list-general.txt", true, oldData, newData)
+	want := "Обновлён основной доменный лист (list-general.txt): +2 / −1 записи"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if got := describeListChange("list-google.txt", false, nil, newData); got != "Загружен доменный лист Google (list-google.txt)" {
+		t.Fatalf("new file: %q", got)
+	}
+}
+
+func TestCurrentListContentIPSetBackup(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "ipset-all.txt"), []byte("203.0.113.113/32\n"), 0644)
+	_ = os.WriteFile(filepath.Join(dir, "ipset-all.txt.backup"), []byte("1.2.3.0/24\n"), 0644)
+	data, ok := currentListContent(dir, "ipset-all.txt")
+	if !ok || string(data) != "1.2.3.0/24\n" {
+		t.Fatalf("expected backup content, got %q (ok=%v)", data, ok)
+	}
+	if _, ok := currentListContent(dir, "list-general.txt"); ok {
+		t.Fatal("missing file must report !ok")
+	}
+}

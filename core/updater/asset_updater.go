@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -17,10 +18,27 @@ import (
 )
 
 type AssetUpdateSummary struct {
-	UpdatedFiles []string `json:"updated_files"`
-	FailedFiles  []string `json:"failed_files"`
-	Message      string   `json:"message"`
+	UpdatedFiles      []string `json:"updated_files"`
+	FailedFiles       []string `json:"failed_files"`
+	AddedStrategies   []string `json:"added_strategies"`
+	UpdatedStrategies []string `json:"updated_strategies"`
+	// Changes holds one human-readable line per real change; empty when everything was already up to date.
+	Changes []string `json:"changes"`
+	Changed bool     `json:"changed"`
+	Message string   `json:"message"`
 }
+
+// listTitles gives the host lists readable names for the sync report.
+var listTitles = map[string]string{
+	"list-general.txt":  "основной доменный лист",
+	"list-google.txt":   "доменный лист Google",
+	"list-exclude.txt":  "лист исключений доменов",
+	"ipset-exclude.txt": "лист исключений IP",
+	"ipset-all.txt":     "IP-лист",
+}
+
+// ipsetPlaceholder is what SetIPSetMode writes into ipset-all.txt in "none" mode.
+const ipsetPlaceholder = "203.0.113.113"
 
 var UpstreamAssetURLs = map[string]string{
 	"list-general.txt":  "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/lists/list-general.txt",
@@ -164,6 +182,85 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return nil
 }
 
+// listEntries returns the meaningful (non-empty, non-comment) lines of a host list.
+func listEntries(data []byte) map[string]struct{} {
+	set := make(map[string]struct{})
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		set[line] = struct{}{}
+	}
+	return set
+}
+
+// diffListEntries counts entries added to and removed from a host list.
+func diffListEntries(oldData, newData []byte) (added, removed int) {
+	oldSet, newSet := listEntries(oldData), listEntries(newData)
+	for e := range newSet {
+		if _, ok := oldSet[e]; !ok {
+			added++
+		}
+	}
+	for e := range oldSet {
+		if _, ok := newSet[e]; !ok {
+			removed++
+		}
+	}
+	return added, removed
+}
+
+// currentListContent returns what the local copy of a host list holds. ipset-all.txt may be
+// replaced by the IPSet mode placeholder, in which case the real list lives in the backup.
+func currentListContent(listsDir, filename string) ([]byte, bool) {
+	p := filepath.Join(listsDir, filename)
+	data, err := os.ReadFile(p)
+	if filename == "ipset-all.txt" && (err != nil || len(bytes.TrimSpace(data)) == 0 || bytes.Contains(data, []byte(ipsetPlaceholder))) {
+		if backup, berr := os.ReadFile(p + ".backup"); berr == nil && len(backup) > 0 {
+			return backup, true
+		}
+	}
+	return data, err == nil
+}
+
+func describeListChange(filename string, existed bool, oldData, newData []byte) string {
+	title := listTitles[filename]
+	if title == "" {
+		title = filename
+	}
+	if !existed {
+		return fmt.Sprintf("Загружен %s (%s)", title, filename)
+	}
+	added, removed := diffListEntries(oldData, newData)
+	var parts []string
+	if added > 0 {
+		parts = append(parts, fmt.Sprintf("+%d", added))
+	}
+	if removed > 0 {
+		parts = append(parts, fmt.Sprintf("−%d", removed))
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("Обновлён %s (%s)", title, filename)
+	}
+	return fmt.Sprintf("Обновлён %s (%s): %s %s", title, filename, strings.Join(parts, " / "),
+		pluralRu(added+removed, "запись", "записи", "записей"))
+}
+
+func pluralRu(n int, one, few, many string) string {
+	n %= 100
+	if n >= 11 && n <= 14 {
+		return many
+	}
+	switch n % 10 {
+	case 1:
+		return one
+	case 2, 3, 4:
+		return few
+	}
+	return many
+}
+
 func discoverStrategyBatchFiles(client *http.Client) []string {
 	req, err := http.NewRequest("GET", "https://api.github.com/repos/Flowseal/zapret-discord-youtube/contents/", nil)
 	if err == nil {
@@ -206,12 +303,23 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 
 	_ = os.MkdirAll(listsDir, 0755)
 
-	// 1. Sync host lists (user-owned *-user.txt files are never part of UpstreamAssetURLs)
-	for filename, fileURL := range UpstreamAssetURLs {
-		body, err := fetchLimited(client, fileURL, maxListBytes)
+	// 1. Sync host lists (user-owned *-user.txt files are never part of UpstreamAssetURLs).
+	// Files are rewritten only when upstream content differs from the local copy.
+	listNames := make([]string, 0, len(UpstreamAssetURLs))
+	for filename := range UpstreamAssetURLs {
+		listNames = append(listNames, filename)
+	}
+	sort.Strings(listNames)
+	var listChanges []string
+	for _, filename := range listNames {
+		body, err := fetchLimited(client, UpstreamAssetURLs[filename], maxListBytes)
 		if err != nil {
 			logger.Log("[Updater] %s: %v", filename, err)
 			summary.FailedFiles = append(summary.FailedFiles, filename)
+			continue
+		}
+		oldData, existed := currentListContent(listsDir, filename)
+		if existed && bytes.Equal(oldData, body) {
 			continue
 		}
 		if err := writeFileAtomic(filepath.Join(listsDir, filename), body, 0644); err != nil {
@@ -220,6 +328,7 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 			continue
 		}
 		summary.UpdatedFiles = append(summary.UpdatedFiles, filename)
+		listChanges = append(listChanges, describeListChange(filename, existed, oldData, body))
 	}
 
 	// 2. Sync strategies from Flowseal .bat files
@@ -259,10 +368,10 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 	}
 	wg.Wait()
 
-	// 3. Update strategies.json
+	// 3. Update strategies.json, only when a strategy was added or its arguments changed
+	var fileData StrategiesData
 	if len(parsedResults) > 0 {
 		strategiesPath := filepath.Join(appDir, "strategies.json")
-		var fileData StrategiesData
 		if data, err := os.ReadFile(strategiesPath); err == nil {
 			if err := json.Unmarshal(data, &fileData); err != nil {
 				logger.Log("[Updater] strategies.json повреждён (%v), будет пересоздан.", err)
@@ -278,9 +387,18 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 			stratIndex[s.ID] = i
 		}
 
-		for id, rawArgs := range parsedResults {
+		ids := make([]string, 0, len(parsedResults))
+		for id := range parsedResults {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			rawArgs := parsedResults[id]
 			if idx, ok := stratIndex[id]; ok {
-				fileData.Strategies[idx].RawArgs = rawArgs
+				if fileData.Strategies[idx].RawArgs != rawArgs {
+					fileData.Strategies[idx].RawArgs = rawArgs
+					summary.UpdatedStrategies = append(summary.UpdatedStrategies, fileData.Strategies[idx].Name)
+				}
 			} else {
 				fileData.Strategies = append(fileData.Strategies, StrategyRecord{
 					ID:          id,
@@ -289,9 +407,13 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 					RawArgs:     rawArgs,
 				})
 				stratIndex[id] = len(fileData.Strategies) - 1
+				summary.AddedStrategies = append(summary.AddedStrategies, formatStrategyName(id))
 			}
 		}
+	}
 
+	if len(summary.AddedStrategies) > 0 || len(summary.UpdatedStrategies) > 0 {
+		strategiesPath := filepath.Join(appDir, "strategies.json")
 		outJSON, err := json.MarshalIndent(fileData, "", "  ")
 		if err == nil {
 			err = writeFileAtomic(strategiesPath, outJSON, 0644)
@@ -304,16 +426,27 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 		}
 	}
 
-	listsCount := 0
-	for _, fn := range summary.UpdatedFiles {
-		if strings.HasPrefix(fn, "list-") || strings.HasPrefix(fn, "ipset-") {
-			listsCount++
-		}
+	if n := len(summary.AddedStrategies); n > 0 {
+		summary.Changes = append(summary.Changes, fmt.Sprintf("Добавлено %d %s: %s",
+			n, pluralRu(n, "стратегия", "стратегии", "стратегий"), strings.Join(summary.AddedStrategies, ", ")))
+	}
+	if n := len(summary.UpdatedStrategies); n > 0 {
+		summary.Changes = append(summary.Changes, fmt.Sprintf("Обновлено %d %s: %s",
+			n, pluralRu(n, "стратегия", "стратегии", "стратегий"), strings.Join(summary.UpdatedStrategies, ", ")))
+	}
+	summary.Changes = append(summary.Changes, listChanges...)
+	summary.Changed = len(summary.Changes) > 0
+
+	switch {
+	case summary.Changed:
+		summary.Message = strings.Join(summary.Changes, "\n")
+	case len(summary.FailedFiles) == 0:
+		summary.Message = "Изменений нет — списки и стратегии уже актуальны"
+	default:
+		summary.Message = "Изменений в скачанных файлах нет"
 	}
 
-	summary.Message = fmt.Sprintf("Списков обновлено: %d/%d, Стратегий обновлено: %d (Ошибок: %d)",
-		listsCount, len(UpstreamAssetURLs), len(parsedResults), len(summary.FailedFiles))
-	logger.Log("[Updater] Синхронизация завершена. %s", summary.Message)
+	logger.Log("[Updater] Синхронизация завершена. %s (ошибок: %d)", strings.ReplaceAll(summary.Message, "\n", "; "), len(summary.FailedFiles))
 
 	return summary, nil
 }

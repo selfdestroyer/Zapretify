@@ -4,7 +4,8 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 1.4.0 | :white_check_mark: | Current release (new compact UI, no external fonts in CSP, saved benchmark result) |
+| 1.4.1 | :white_check_mark: | Current release (detailed report for base updates) |
+| 1.4.0 | :white_check_mark: | Supported |
 | 1.3.4 | :white_check_mark: | Supported |
 | 1.3.3 | :white_check_mark: | Supported |
 | 1.3.2 | :white_check_mark: | Supported |
