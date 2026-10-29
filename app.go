@@ -55,9 +55,13 @@ type App struct {
 type AssetSyncStatus struct {
 	Running bool                        `json:"running"`
 	Done    bool                        `json:"done"`
+	Auto    bool                        `json:"auto"` // started by the application on launch, not by the user
 	Summary *updater.AssetUpdateSummary `json:"summary,omitempty"`
 	Error   string                      `json:"error,omitempty"`
 }
+
+// startupAssetSyncDelay lets autostarted services settle before the bases are downloaded.
+const startupAssetSyncDelay = 3 * time.Second
 
 // zapretState remembers what was running before a benchmark so it can be restored afterwards.
 type zapretState struct {
@@ -124,6 +128,15 @@ func (a *App) startup(ctx context.Context) {
 		time.Sleep(500 * time.Millisecond)
 		TriggerTrayUpdate()
 	}()
+
+	if cfg.App.AutoUpdateAssets {
+		go func() {
+			time.Sleep(startupAssetSyncDelay)
+			if err := a.startAssetSync(true); err != nil {
+				logger.Log("[Updater] Автообновление баз при запуске не запущено: %v", err)
+			}
+		}()
+	}
 }
 
 func (a *App) reconcileAutostart() {
@@ -751,12 +764,17 @@ func (a *App) CheckAppUpdate() (*updater.UpdateCheckResult, error) {
 // StartAssetSync downloads host lists and strategies from upstream in the background.
 // It can take longer than an HTTP request is allowed to, so the UI polls GetAssetSyncStatus.
 func (a *App) StartAssetSync() error {
+	return a.startAssetSync(false)
+}
+
+// startAssetSync runs the synchronisation; auto marks the run made on application launch.
+func (a *App) startAssetSync(auto bool) error {
 	a.syncMu.Lock()
 	if a.syncStatus.Running {
 		a.syncMu.Unlock()
 		return fmt.Errorf("синхронизация уже выполняется")
 	}
-	a.syncStatus = AssetSyncStatus{Running: true}
+	a.syncStatus = AssetSyncStatus{Running: true, Auto: auto}
 	a.syncMu.Unlock()
 
 	go func() {

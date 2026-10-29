@@ -4,7 +4,8 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 1.4.2 | :white_check_mark: | Current release (Flowseal 1.10.4, working IPSet list, checksummed fake payload sync) |
+| 1.4.3 | :white_check_mark: | Current release (bases update automatically on launch) |
+| 1.4.2 | :white_check_mark: | Supported |
 | 1.4.1 | :white_check_mark: | Supported |
 | 1.4.0 | :white_check_mark: | Supported |
 | 1.3.4 | :white_check_mark: | Supported |

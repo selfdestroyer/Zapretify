@@ -10,7 +10,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20(x64)-0078D6?style=flat&logo=windows)](https://microsoft.com)
-[![Release](https://img.shields.io/badge/Release-v1.4.2-00C853?style=flat&logo=github)](../../releases/tag/v1.4.2)
+[![Release](https://img.shields.io/badge/Release-v1.4.3-00C853?style=flat&logo=github)](../../releases/tag/v1.4.3)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Planned](https://img.shields.io/badge/Planned-Linux%20%7C%20macOS-9333ea)](#roadmap)
 [![Core 1](https://img.shields.io/badge/Core%201-zapret%20(bol--van%20%2F%20Flowseal)-orange)](https://github.com/Flowseal/zapret-discord-youtube)
@@ -235,6 +235,7 @@ graph TD
 - Загрузка и разбор актуальных сценариев `.bat` из репозитория Flowseal, горячее обновление `strategies.json` без перезапуска приложения.
 - Докачка новых и изменённых файлов фейков `bin/*.bin` с проверкой контрольной суммы.
 - Подробный отчёт: какие стратегии добавлены или изменены, какие списки и фейки обновились, или «Файлы актуальны».
+- Базы обновляются автоматически при запуске программы (можно отключить в «Настройках приложения»).
 - **Свои списки не трогаются**: `list-general-user.txt`, `list-exclude-user.txt` и `ipset-exclude-user.txt` («Мои сайты», «Мои исключения», «Мои IP») никогда не перезаписываются.
 
 ### <img src="docs/icons/list.svg" width="22" height="22" alt="" align="top"> Списки доменов
@@ -275,7 +276,7 @@ graph TD
 ## <img src="docs/icons/download.svg" width="26" height="26" alt="" align="top"> Установка и запуск
 
 ### Вариант 1: Portable-версия (без установки)
-1. Скачайте архив **`Zapretify-Portable-v1.4.2.zip`** из раздела [Releases](../../releases).
+1. Скачайте архив **`Zapretify-Portable-v1.4.3.zip`** из раздела [Releases](../../releases).
 2. Распакуйте архив в удобный каталог (например, `C:\Program Files\Zapretify` или `D:\Tools\Zapretify`).
 3. Запустите **`Zapretify.exe`** от имени администратора.
 
@@ -380,7 +381,7 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o dist/Zapret
 ```cmd
 build_all.bat
 ```
-Скрипт скомпилирует `Zapretify.exe`, упакует портативный архив `dist/Zapretify-Portable-v1.4.2.zip` и автоматически соберёт инсталлятор `dist/Zapretify-Setup-v1.4.0.exe`.
+Скрипт скомпилирует `Zapretify.exe`, упакует портативный архив `dist/Zapretify-Portable-v1.4.3.zip` и автоматически соберёт инсталлятор `dist/Zapretify-Setup-v1.4.0.exe`.
 
 ---
 

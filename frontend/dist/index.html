@@ -377,11 +377,11 @@ button,input,select{font-family:inherit;color:inherit}
 .lg-empty{height:100%;display:grid;place-items:center;color:var(--muted);font:13px var(--sans)}
 /* обновления */
 .up{flex-direction:row;gap:14px}
-.upc{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;border:1px solid var(--border);border-radius:14px;background:var(--card);padding:14px}
+.upc{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;gap:10px;border:1px solid var(--border);border-radius:14px;background:var(--card);padding:14px}
 .upc-h{display:flex;gap:12px;align-items:center}
 .upc-h .chip{width:38px;height:38px}
 .upc-h h3{font-size:14px;font-weight:700;line-height:1.2}.upc-h p{font-size:11.5px;color:var(--muted)}
-.ust{flex:1;min-height:0;font-size:12.5px;color:var(--text-2);line-height:1.5}
+.ust{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;font-size:12.5px;color:var(--text-2);line-height:1.5}
 .ust .row1{display:flex;align-items:flex-start;gap:9px}
 .ust .row1 .ico{width:16px;height:16px;margin-top:2px;flex:none}
 .ust b{color:var(--text);font-weight:600}.ust .sm{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
@@ -1325,12 +1325,12 @@ const CFG = {
   z: () => ({ strategy: appConfig.zapret.strategy, service: !!(appConfig.zapret.autostart_service || appConfig.zapret.service_mode) || svcInstalled(),
     game: appConfig.zapret.game_filter_mode || 'disabled', tcp: appConfig.zapret.game_filter_tcp || '1024-65535', udp: appConfig.zapret.game_filter_udp || '1024-65535', ipset: appConfig.zapret.ipset_mode || 'none' }),
   t: () => ({ port: String(appConfig.tg_proxy.port || 1443), secret: appConfig.tg_proxy.secret || '', autostart: !!appConfig.tg_proxy.autostart }),
-  a: () => ({ autostart_app: !!appConfig.app.autostart_app, start_minimized: !!appConfig.app.start_minimized }),
+  a: () => ({ autostart_app: !!appConfig.app.autostart_app, start_minimized: !!appConfig.app.start_minimized, auto_update_assets: !!appConfig.app.auto_update_assets }),
 };
 const DEFAULTS = {
   z: () => ({ strategy: 'general', service: false, game: 'disabled', tcp: '1024-65535', udp: '1024-65535', ipset: 'none' }),
   t: () => ({ port: '1443', secret: D.vals.secret, autostart: false }),
-  a: () => ({ autostart_app: false, start_minimized: false }),
+  a: () => ({ autostart_app: false, start_minimized: false, auto_update_assets: true }),
 };
 const SCHEMA = {
   z: { title: 'YouTube и Discord', tone: 'indigo', icon: 'i-shield',
@@ -1351,7 +1351,8 @@ const SCHEMA = {
       { type: 'dc', adv: 1, label: 'Задержка до дата-центров' }] },
   a: { title: 'Приложение', tone: 'indigo', icon: 'i-gear',
     fields: [{ k: 'autostart_app', type: 'switch', label: 'Открывать Zapretify при входе в Windows', hint: 'Через планировщик задач, без запроса UAC' },
-      { k: 'start_minimized', type: 'switch', label: 'Запускать свёрнутым в трей', hint: 'Окно не появляется при автозапуске; открыть его можно из трея' }] },
+      { k: 'start_minimized', type: 'switch', label: 'Запускать свёрнутым в трей', hint: 'Окно не появляется при автозапуске; открыть его можно из трея' },
+      { k: 'auto_update_assets', type: 'switch', label: 'Обновлять базы Flowseal при запуске', hint: 'Стратегии, списки и IP-лист; ваши списки не меняются' }] },
 };
 let D = null;
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -1489,7 +1490,7 @@ const SAVE = {
     return 'Настройки сохранены';
   },
   async a(v) {
-    await saveConfig(c => { c.app.autostart_app = v.autostart_app; c.app.start_minimized = v.start_minimized; });
+    await saveConfig(c => { c.app.autostart_app = v.autostart_app; c.app.start_minimized = v.start_minimized; c.app.auto_update_assets = v.auto_update_assets; });
     return 'Настройки сохранены';
   },
 };
@@ -1720,7 +1721,7 @@ async function emergency(k, btn) {
 $$('[data-em]').forEach(b => b.onclick = () => confirm2(b, () => emergency(b.dataset.em, b)));
 
 /* ================= обновления ================= */
-const UP = { avail: false, latest: '', url: '', checked: false, at: '', busy: false, err: '', as: { state: 'idle', msg: '', failed: [], changes: [], changed: false }, timer: null };
+const UP = { avail: false, latest: '', url: '', checked: false, at: '', busy: false, err: '', as: { state: 'idle', msg: '', failed: [], changes: [], changed: false, auto: false, at: '' }, timer: null };
 const hm = () => { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const vnum = v => String(v || '').replace(/^v/, '');
 function renderUpApp() {
@@ -1739,9 +1740,11 @@ function renderUpApp() {
 function renderUpAs() {
   const A = UP.as, el = $('#up-as-st'); let h;
   const asLines = a => a.map(x => '<span class="sm" style="display:block">' + esc(x) + '</span>').join('');
-  if (A.state === 'running') h = '<div class="row1"><i class="spin" style="display:block;border-color:var(--raised-2);border-top-color:var(--indigo-text)"></i><div><b>Скачиваю списки и стратегии…</b><span class="sm">Обычно это занимает до минуты</span></div></div><div class="pbar ind"><i></i></div>';
-  else if (A.state === 'done') h = '<div class="row1"><span class="c-ok">' + ico('i-check') + '</span><div><b>' + (A.changed ? 'Базы обновлены' : 'Файлы актуальны') + '</b>' + asLines(A.changes.length ? A.changes : [A.msg]) + '</div></div>';
-  else if (A.state === 'partial') h = '<div class="row1"><span class="c-warn">' + ico('i-alert') + '</span><div><b>Обновлено частично</b>' + asLines(A.changes) + '<span class="sm">Не удалось скачать: ' + esc(A.failed.join(', ')) + '.' + (A.changes.length ? '' : ' В остальных файлах изменений нет.') + '</span></div></div>';
+  const asNote = (A.auto ? '<span class="sm" style="display:block">Проверено автоматически при запуске в ' + A.at + '</span>' : '') +
+    (A.changed && S.z === 'on' ? '<span class="sm" style="display:block">Новые стратегии и списки применятся после перезапуска Zapret</span>' : '');
+  if (A.state === 'running') h = '<div class="row1"><i class="spin" style="display:block;border-color:var(--raised-2);border-top-color:var(--indigo-text)"></i><div><b>' + (A.auto ? 'Проверяю базы Flowseal при запуске…' : 'Скачиваю списки и стратегии…') + '</b><span class="sm">Обычно это занимает до минуты</span></div></div><div class="pbar ind"><i></i></div>';
+  else if (A.state === 'done') h = '<div class="row1"><span class="c-ok">' + ico('i-check') + '</span><div><b>' + (A.changed ? 'Базы обновлены' : 'Файлы актуальны') + '</b>' + asLines(A.changes.length ? A.changes : [A.msg]) + asNote + '</div></div>';
+  else if (A.state === 'partial') h = '<div class="row1"><span class="c-warn">' + ico('i-alert') + '</span><div><b>Обновлено частично</b>' + asLines(A.changes) + '<span class="sm">Не удалось скачать: ' + esc(A.failed.join(', ')) + '.' + (A.changes.length ? '' : ' В остальных файлах изменений нет.') + '</span>' + asNote + '</div></div>';
   else if (A.state === 'error') h = '<div class="row1"><span class="c-bad">' + ico('i-alert') + '</span><div><b>Ошибка обновления</b><span class="sm">' + esc(A.msg) + '</span></div></div>';
   else h = '<div class="row1"><span style="color:var(--muted)">' + ico('i-info') + '</span><div>Скачает свежие списки доменов, IP-лист, стратегии и файлы фейков из upstream Flowseal. «Мои сайты» и другие ваши списки не изменятся.</div></div>';
   if (el._h !== h) { el._h = h; el.innerHTML = h; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in'); }
@@ -1752,32 +1755,53 @@ async function checkApp(manual) {
   try { const d = await api('/api/updater/check'); UP.avail = !!d.available; UP.latest = d.latest_version || ''; UP.url = d.release_url || (UP.latest ? 'https://github.com/selfdestroyer/Zapretify/releases/tag/' + UP.latest : 'https://github.com/selfdestroyer/Zapretify/releases'); UP.checked = true; UP.at = hm(); }
   catch (e) { if (manual) UP.err = e.message; }
   UP.busy = false; renderUpApp(); attention();
+  if (!manual && UP.avail) toast('Доступна новая версия Zapretify v' + vnum(UP.latest) + ' — откройте «Обновления»');
 }
 $('#up-check').onclick = () => checkApp(true);
 $('#up-open').onclick = () => { openExternal(UP.url); toast('Открываю страницу релиза в браузере'); };
 $('#btn-version-badge').onclick = () => { goScreen('updates'); if (UP.avail) openExternal(UP.url); else if (!UP.checked) checkApp(true); };
 ENTER.updates = () => { renderUpApp(); renderUpAs(); };
-$('#up-sync').onclick = async () => {
-  const A = UP.as; if (A.state === 'running') return;
-  try { await post('/api/updater/assets'); } catch (e) { A.state = 'error'; A.msg = e.message; renderUpAs(); return; }
-  A.state = 'running'; A.failed = []; A.changes = []; A.changed = false; renderUpAs();
+// Следит за синхронизацией баз: и запущенной кнопкой, и автоматической при старте приложения.
+function watchAssetSync() {
+  const A = UP.as;
   clearInterval(UP.timer);
   UP.timer = setInterval(async () => {
     let d; try { d = await api('/api/updater/assets/status'); } catch (_) { return; }
     if (d.running || !d.done) return;
     clearInterval(UP.timer); UP.timer = null;
-    const sm = d.summary || {};
-    if (d.error) { A.state = 'error'; A.msg = d.error; toast('Ошибка обновления баз', 'err'); }
-    else {
-      A.changes = sm.changes || []; A.changed = !!sm.changed; A.msg = sm.message || '';
-      if ((sm.failed_files || []).length) { A.state = 'partial'; A.failed = sm.failed_files; toast('Базы обновлены частично'); }
-      else { A.state = 'done'; toast(A.changed ? 'Базы обновлены: ' + A.changes.length + ' ' + plural(A.changes.length, 'изменение', 'изменения', 'изменений') : 'Изменений нет, файлы актуальны', 'ok'); }
-    }
-    renderUpAs();
-    await loadStrategies();
-    FILES.forEach(x => { if (!x.user) LS[x.f].loaded = false; });
+    finishAssetSync(d);
   }, 1000);
+}
+async function finishAssetSync(d) {
+  const A = UP.as, sm = d.summary || {};
+  A.auto = !!d.auto; A.at = hm();
+  if (d.error) { A.state = 'error'; A.msg = d.error; if (!A.auto) toast('Ошибка обновления баз', 'err'); }
+  else {
+    A.changes = sm.changes || []; A.changed = !!sm.changed; A.msg = sm.message || '';
+    const n = A.changes.length, what = n + ' ' + plural(n, 'изменение', 'изменения', 'изменений');
+    if ((sm.failed_files || []).length) { A.state = 'partial'; A.failed = sm.failed_files; if (!A.auto || A.changed) toast(A.auto ? 'Базы обновлены при запуске частично' : 'Базы обновлены частично'); }
+    else { A.state = 'done'; if (A.auto) { if (A.changed) toast('Базы Flowseal обновлены при запуске: ' + what, 'ok'); } else toast(A.changed ? 'Базы обновлены: ' + what : 'Изменений нет, файлы актуальны', 'ok'); }
+  }
+  renderUpAs();
+  if (A.changed) { await loadStrategies(); FILES.forEach(x => { if (!x.user) LS[x.f].loaded = false; }); }
+}
+$('#up-sync').onclick = async () => {
+  const A = UP.as; if (A.state === 'running') return;
+  try { await post('/api/updater/assets'); } catch (e) { A.state = 'error'; A.msg = e.message; A.auto = false; renderUpAs(); return; }
+  A.state = 'running'; A.auto = false; A.failed = []; A.changes = []; A.changed = false; renderUpAs();
+  watchAssetSync();
 };
+// Автообновление баз запускает сам Zapretify через 3 с после старта: подхватываем его состояние.
+async function resumeAssetSync() {
+  const A = UP.as;
+  for (let i = 0; i < 6; i++) {
+    let d; try { d = await api('/api/updater/assets/status'); } catch (_) { return; }
+    if (d.running) { A.state = 'running'; A.auto = !!d.auto; A.failed = []; A.changes = []; A.changed = false; renderUpAs(); watchAssetSync(); return; }
+    if (d.done) { if (d.auto) finishAssetSync(d); return; }
+    if (!appConfig || !appConfig.app || !appConfig.app.auto_update_assets) return;
+    await sleep(1000);
+  }
+}
 
 /* ================= «требует внимания» ================= */
 function attention() {
@@ -1834,6 +1858,7 @@ async function resumeBenchmark() {
   resumeBenchmark();
   loadDiag(true);
   checkApp(false);
+  resumeAssetSync();
   fetchLogs();
   // Журнал читаем раз в 2 с: на экране журнала — для вывода, на остальных — для красной точки ошибок.
   setInterval(async () => { if (await fetchLogs() && cur() === 'logs') renderLogs(); }, 2000);
