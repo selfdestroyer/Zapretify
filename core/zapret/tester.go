@@ -562,9 +562,9 @@ func SaveAutoBenchmarkReport(filePath string, st AutoBenchmarkStatus) error {
 }
 
 // StartAutoBenchmark tests every strategy one after another in the background.
-// runner/registry are the instances owned by the application; onFinish (optional) is called after
+// runner/registry are the engine and registry owned by the application; onFinish (optional) is called after
 // the benchmark has ended (normally or by cancellation) and winws.exe has been stopped.
-func StartAutoBenchmark(runner *ProcessRunner, registry *StrategyRegistry, binDir, listsDir, gameFilterMode, gameTCP, gameUDP, method, targetGroup, appDir string, onFinish func()) error {
+func StartAutoBenchmark(runner Engine, registry *StrategyRegistry, binDir, listsDir, gameFilterMode, gameTCP, gameUDP, method, targetGroup, appDir string, onFinish func()) error {
 	if runner == nil {
 		runner = GetRunner()
 	}

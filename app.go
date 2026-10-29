@@ -40,7 +40,7 @@ type App struct {
 	shutdownOnce sync.Once
 
 	cfg      *config.Config
-	runner   *zapret.ProcessRunner
+	runner   zapret.Engine
 	registry *zapret.StrategyRegistry
 	tgServer *tgproxy.Server
 
@@ -79,7 +79,7 @@ func NewApp() *App {
 	)
 }
 
-func NewAppWith(cfg *config.Config, runner *zapret.ProcessRunner, registry *zapret.StrategyRegistry, tgServer *tgproxy.Server) *App {
+func NewAppWith(cfg *config.Config, runner zapret.Engine, registry *zapret.StrategyRegistry, tgServer *tgproxy.Server) *App {
 	exePath, err := os.Executable()
 	if err != nil {
 		exePath = "."
