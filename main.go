@@ -36,20 +36,12 @@ func main() {
 	flag.Parse()
 
 	if *uninstallFlag {
-		exePath, err := os.Executable()
-		if err != nil {
-			exePath = "."
-		}
-		appDir := filepath.Dir(exePath)
-		handleUninstall(appDir, *quietFlag)
+		handleUninstall(config.AppDir(), *quietFlag)
 		return
 	}
 
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = "."
-	}
-	appDir := filepath.Dir(exePath)
+	appDir := config.AppDir()
+	prepareAppDir(appDir)
 	binDir := filepath.Join(appDir, "bin")
 	listsDir := filepath.Join(appDir, "lists")
 

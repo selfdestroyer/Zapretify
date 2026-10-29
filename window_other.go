@@ -9,6 +9,9 @@ func runGUIWindow(url string, title string, width int, height int, startMinimize
 	if !startMinimized {
 		openBrowser(url)
 	}
+	// The UI lives in the browser, so there is no window to wait for: keep serving until
+	// a signal or «Закрыть всё» ends the process (both call os.Exit).
+	select {}
 }
 
 func ExitGUIWindow() {

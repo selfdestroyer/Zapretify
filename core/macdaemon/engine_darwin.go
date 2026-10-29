@@ -83,19 +83,23 @@ func (s *Server) startEngine(strategyID, userDataDir string) error {
 	if err := ValidateEngineArgs(cfg.Args, bases.ListsDir, bases.BinDir); err != nil {
 		return err
 	}
-	rules, err := PFRules(utunName, utunPeer, cfg.TCPPorts, cfg.UDPPorts)
-	if err != nil {
+	if _, err := PFRules("lo0", utunName, utunPeer, cfg.TCPPorts, cfg.UDPPorts); err != nil {
 		return err
 	}
 	if err := os.WriteFile(confPath, []byte(zapret.WriteUtunwsConfig(cfg.Args)), 0600); err != nil {
 		return err
 	}
-	return s.launch(strategyID, rules)
+	s.tcpPorts, s.udpPorts = cfg.TCPPorts, cfg.UDPPorts
+	return s.launch(strategyID)
 }
 
 // launch starts utunws for the config already written to confPath and routes traffic to it.
-func (s *Server) launch(strategyID, rules string) error {
-	iface, gateway, err := defaultRoute()
+func (s *Server) launch(strategyID string) error {
+	iface, gateway, vpn, err := defaultRoute()
+	if err != nil {
+		return err
+	}
+	rules, err := PFRules(iface, utunName, utunPeer, s.tcpPorts, s.udpPorts)
 	if err != nil {
 		return err
 	}
@@ -152,8 +156,12 @@ func (s *Server) launch(strategyID, rules string) error {
 	}
 
 	s.proc = p
-	s.rules = rules
 	s.lastExit = ""
+	s.note = ""
+	if vpn != "" {
+		s.note = fmt.Sprintf("Активен VPN (%s): обход работает только для сайтов, которые идут мимо VPN", vpn)
+		s.logf("%s", s.note)
+	}
 	go s.watchRoute(p)
 	return nil
 }
@@ -215,7 +223,7 @@ func (s *Server) watchRoute(p *engineProc) {
 			return
 		case <-t.C:
 		}
-		iface, gw, err := defaultRoute()
+		iface, gw, _, err := defaultRoute()
 		if err == nil && iface == p.iface && gw == p.gateway {
 			continue
 		}
@@ -227,12 +235,12 @@ func (s *Server) watchRoute(p *engineProc) {
 		s.logf("сеть изменилась (%s %s → %s %s), перезапуск движка", p.iface, p.gateway, iface, gw)
 		s.stopEngine()
 		if err == nil {
-			if lerr := s.launch(p.strategy, s.rules); lerr != nil {
+			if lerr := s.launch(p.strategy); lerr != nil {
 				s.lastExit = "перезапуск после смены сети: " + lerr.Error()
 				s.logf("%s", s.lastExit)
 			}
 		} else {
-			s.lastExit = "нет сети: " + err.Error()
+			s.lastExit = "движок остановлен: " + err.Error()
 		}
 		s.mu.Unlock()
 		return
@@ -265,10 +273,37 @@ func foreignEngines(ours string) []int {
 	return pids
 }
 
-func defaultRoute() (iface, gateway string, err error) {
-	out, err := exec.Command("route", "-n", "get", "default").Output()
+// vpnProbes are public addresses from different /8 blocks: VPN clients in TUN mode keep the default
+// route on the physical interface and add split routes (1/8, 2/7, 4/6, 8/7, …) that cover everything.
+var vpnProbes = []string{"1.1.1.1", "8.8.8.8", "77.88.8.8", "142.250.0.1"}
+
+// defaultRoute returns the physical interface and gateway the engine sends packets to, and the VPN
+// interface that carries part of the traffic, if any. pf only diverts traffic leaving through iface,
+// so whatever the VPN routes stays in the VPN and only the direct traffic is processed.
+func defaultRoute() (iface, gateway, vpn string, err error) {
+	iface, gateway, err = routeTo("default")
 	if err != nil {
-		return "", "", fmt.Errorf("нет маршрута по умолчанию: %w", err)
+		return "", "", "", fmt.Errorf("нет маршрута по умолчанию: %w", err)
+	}
+	if iface == "" || gateway == "" {
+		return "", "", "", errors.New("нет маршрута по умолчанию")
+	}
+	if isTunnelIface(iface) {
+		return "", "", "", fmt.Errorf("весь трафик идёт через VPN (%s), обходить нечего; выключите VPN или его режим TUN", iface)
+	}
+	for _, ip := range vpnProbes {
+		if via, _, err := routeTo(ip); err == nil && via != "" && via != iface {
+			vpn = via
+			break
+		}
+	}
+	return iface, gateway, vpn, nil
+}
+
+func routeTo(dst string) (iface, gateway string, err error) {
+	out, err := exec.Command("route", "-n", "get", dst).Output()
+	if err != nil {
+		return "", "", err
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		k, v, ok := strings.Cut(strings.TrimSpace(line), ":")
@@ -282,13 +317,11 @@ func defaultRoute() (iface, gateway string, err error) {
 			gateway = strings.TrimSpace(v)
 		}
 	}
-	if iface == "" || gateway == "" {
-		return "", "", errors.New("нет маршрута по умолчанию")
-	}
-	if strings.HasPrefix(iface, "utun") || strings.HasPrefix(iface, "ppp") || strings.HasPrefix(iface, "ipsec") {
-		return "", "", fmt.Errorf("трафик идёт через VPN (%s); выключите VPN", iface)
-	}
 	return iface, gateway, nil
+}
+
+func isTunnelIface(name string) bool {
+	return strings.HasPrefix(name, "utun") || strings.HasPrefix(name, "ppp") || strings.HasPrefix(name, "ipsec")
 }
 
 func neighborMAC(gateway string) (string, error) {

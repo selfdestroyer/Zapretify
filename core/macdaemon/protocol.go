@@ -49,6 +49,7 @@ type Response struct {
 	PID      int      `json:"pid,omitempty"`
 	Iface    string   `json:"iface,omitempty"`
 	LastExit string   `json:"last_exit,omitempty"` // why the engine stopped on its own, if it did
+	Note     string   `json:"note,omitempty"`      // warning about the running engine (VPN active, …)
 	Log      []string `json:"log,omitempty"`       // last engine output lines
 }
 

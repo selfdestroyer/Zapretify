@@ -23,8 +23,10 @@ type Server struct {
 
 	mu       sync.Mutex // serialises commands and engine state
 	proc     *engineProc
-	rules    string // pf rules of the running strategy, reused on a network change
+	tcpPorts []string // ports of the running strategy, reused on a network change
+	udpPorts []string
 	lastExit string
+	note     string // warning about the current state (a VPN carries part of the traffic)
 	log      *ringLog
 }
 
@@ -129,6 +131,7 @@ func (s *Server) fillStatus(r *Response) {
 		r.Iface = s.proc.iface
 	}
 	r.LastExit = s.lastExit
+	r.Note = s.note
 	r.Log = s.log.tail(maxLogLines)
 }
 

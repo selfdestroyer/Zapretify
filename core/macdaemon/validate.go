@@ -47,8 +47,9 @@ var allowedOptions = map[string]bool{
 }
 
 // plainValue is what a non-path option value may contain: numbers, words, lists, hex, "!" and
-// key=value modifiers (--dpi-desync-fake-tls-mod=rnd,sni=www.google.com).
-var plainValue = regexp.MustCompile(`^[A-Za-z0-9_.:,!+=*-]*$`)
+// key=value modifiers (--dpi-desync-fake-tls-mod=rnd,sni=www.google.com). utunws splits its @file
+// with wordexp, so nothing it would expand ($, *, ?, ~, quotes, spaces) is allowed.
+var plainValue = regexp.MustCompile(`^[A-Za-z0-9_.:,!+=-]*$`)
 
 // ValidateEngineArgs checks translated strategy arguments before they reach the root engine:
 // only allowed options, and every path inside one of dirs (the daemon's own lists/ and bin/).
@@ -90,8 +91,9 @@ func insideDirs(p string, dirs []string) bool {
 }
 
 // PFRules builds the pf anchor that sends the strategy's ports to the engine interface.
-// Only traffic of regular users is routed (user > root): the engine itself and system daemons are not.
-func PFRules(utun, peer string, tcpPorts, udpPorts []string) (string, error) {
+// Only traffic leaving through iface (the physical interface, not a VPN tunnel) and only traffic of
+// regular users is routed (user > root): the engine itself and system daemons are not.
+func PFRules(iface, utun, peer string, tcpPorts, udpPorts []string) (string, error) {
 	var b strings.Builder
 	for _, r := range []struct {
 		proto string
@@ -104,8 +106,8 @@ func PFRules(utun, peer string, tcpPorts, udpPorts []string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "pass out quick route-to (%s %s) inet proto %s from any to any port {%s} user { >root } no state\n",
-			utun, peer, r.proto, list)
+		fmt.Fprintf(&b, "pass out quick on %s route-to (%s %s) inet proto %s from any to any port {%s} user { >root } no state\n",
+			iface, utun, peer, r.proto, list)
 	}
 	if b.Len() == 0 {
 		return "", fmt.Errorf("в стратегии нет портов для перехвата")

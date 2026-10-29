@@ -33,7 +33,7 @@ func TestBundledStrategiesPassValidation(t *testing.T) {
 		if err := ValidateEngineArgs(cfg.Args, testLists, testBin); err != nil {
 			t.Errorf("%s: %v", s.ID, err)
 		}
-		if _, err := PFRules("utun60", "10.78.0.2", cfg.TCPPorts, cfg.UDPPorts); err != nil {
+		if _, err := PFRules("en0", "utun60", "10.78.0.2", cfg.TCPPorts, cfg.UDPPorts); err != nil {
 			t.Errorf("%s: %v", s.ID, err)
 		}
 	}
@@ -62,21 +62,21 @@ func TestValidateEngineArgsRejects(t *testing.T) {
 }
 
 func TestPFRules(t *testing.T) {
-	rules, err := PFRules("utun60", "10.78.0.2", []string{"80", "443"}, []string{"443", "50000-50100"})
+	rules, err := PFRules("en0", "utun60", "10.78.0.2", []string{"80", "443"}, []string{"443", "50000-50100"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "pass out quick route-to (utun60 10.78.0.2) inet proto tcp from any to any port {80,443} user { >root } no state\n" +
-		"pass out quick route-to (utun60 10.78.0.2) inet proto udp from any to any port {443,50000:50100} user { >root } no state\n"
+	want := "pass out quick on en0 route-to (utun60 10.78.0.2) inet proto tcp from any to any port {80,443} user { >root } no state\n" +
+		"pass out quick on en0 route-to (utun60 10.78.0.2) inet proto udp from any to any port {443,50000:50100} user { >root } no state\n"
 	if rules != want {
 		t.Fatalf("got:\n%swant:\n%s", rules, want)
 	}
 	for _, bad := range [][]string{{"0"}, {"70000"}, {"100-50"}, {"80;pass"}, {"443 any"}} {
-		if _, err := PFRules("utun60", "10.78.0.2", bad, nil); err == nil {
+		if _, err := PFRules("en0", "utun60", "10.78.0.2", bad, nil); err == nil {
 			t.Errorf("expected an error for %q", bad)
 		}
 	}
-	if _, err := PFRules("utun60", "10.78.0.2", nil, nil); err == nil || !strings.Contains(err.Error(), "портов") {
+	if _, err := PFRules("en0", "utun60", "10.78.0.2", nil, nil); err == nil || !strings.Contains(err.Error(), "портов") {
 		t.Errorf("expected an error for no ports, got %v", err)
 	}
 }

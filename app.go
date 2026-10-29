@@ -73,18 +73,14 @@ type zapretState struct {
 func NewApp() *App {
 	return NewAppWith(
 		config.Get(),
-		zapret.GetRunner(),
+		defaultEngine(),
 		zapret.GetRegistry(),
 		tgproxy.GetServer(),
 	)
 }
 
 func NewAppWith(cfg *config.Config, runner zapret.Engine, registry *zapret.StrategyRegistry, tgServer *tgproxy.Server) *App {
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = "."
-	}
-	appDir := filepath.Dir(exePath)
+	appDir := config.AppDir()
 	binDir := filepath.Join(appDir, "bin")
 	listsDir := filepath.Join(appDir, "lists")
 

@@ -79,6 +79,10 @@ say "Стратегия «${STRATEGY}»..."
 {
   echo "Стратегия: $STRATEGY, интерфейс: $IFACE, $(date)"
   sw_vers | tr '\n' ' '; uname -m
+  section "Маршрут (VPN)"
+  for d in default 1.1.1.1 142.250.0.1 162.159.128.233; do
+    printf '%-16s через %s\n' "$d" "$(route -n get "$d" 2>/dev/null | awk '/interface:/{print $2}')"
+  done
   section "DNS"
   dns_check
   section "Сайты до запуска ($TRIES попытки)"
@@ -86,7 +90,7 @@ say "Стратегия «${STRATEGY}»..."
 
   trap finish EXIT
   section "Запуск"
-  sudo -u "$USER_NAME" "$Z" start "$STRATEGY" | grep -E '"(ok|running|strategy|error)"'
+  sudo -u "$USER_NAME" "$Z" start "$STRATEGY" | grep -E '"(ok|running|strategy|error|note)"'
   ifconfig utun60
   echo "Правила pf:"; pfctl -a com.apple/zapretify -s rules 2>/dev/null
 
@@ -112,5 +116,5 @@ say "Стратегия «${STRATEGY}»..."
   fi
 
   section "Статус демона"
-  sudo -u "$USER_NAME" "$Z" status | grep -E '"(running|strategy|pid|iface|last_exit)"'
+  sudo -u "$USER_NAME" "$Z" status | grep -E '"(running|strategy|pid|iface|last_exit|note)"'
 } >"$REPORT" 2>&1

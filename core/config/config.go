@@ -255,12 +255,7 @@ var (
 func Get() *Config {
 	once.Do(func() {
 		instance = DefaultConfig()
-		exePath, err := os.Executable()
-		if err != nil {
-			exePath = "."
-		}
-		appDir := filepath.Dir(exePath)
-		instance.configPath = filepath.Join(appDir, "config.json")
+		instance.configPath = filepath.Join(AppDir(), "config.json")
 		_ = instance.Load()
 		instance.App.GithubRepo = DefaultGithubRepo
 	})
