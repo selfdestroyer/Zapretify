@@ -11,7 +11,7 @@ private let showNotification = Notification.Name("io.github.selfdestroyer.zapret
 // Height of the UI's top bar (.top in index.html): the window buttons are centred in it.
 private let headerHeight: CGFloat = 54
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, NSMenuDelegate {
     private var window: NSWindow!
     private var webView: WKWebView!
     private var statusItem: NSStatusItem!
@@ -22,6 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private var startHidden = false
     private var quitting = false
     private var lastMouseDown: NSEvent?
+    private var trayMenu: NSMenu!
+    private var zapretOn = false
+    private var tgOn = false
 
     func applicationDidFinishLaunching(_ note: Notification) {
         if let other = otherInstance() {
@@ -57,6 +60,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             return
         }
         core.executableURL = exe
+        // --minimized from the login item (LaunchAgent) goes on to the core; Finder's -psn_… does not.
+        core.arguments = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-psn") }
         var env = ProcessInfo.processInfo.environment
         env["ZAPRETIFY_SHELL"] = "1"
         core.environment = env
@@ -82,6 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     private func coreReady(_ url: URL) {
         guard uiURL == nil else { return }
         uiURL = url
+        refreshStatus()
+        Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.refreshStatus() }
         webView.load(URLRequest(url: url))
         // ZAPRETIFY_MINIMIZED is printed right after the URL; let it arrive first.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { if !self.startHidden { self.showWindow() } }
@@ -191,16 +198,111 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     // MARK: menus
 
+    // Menu bar icon: a click opens the window, a right click (or ⌃-click) shows the menu,
+    // the same as the tray icon on Windows.
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        let image = NSImage(systemSymbolName: "shield.lefthalf.filled", accessibilityDescription: "Zapretify")
-        image?.isTemplate = true
-        statusItem.button?.image = image
-        let menu = NSMenu()
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusClicked)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        trayMenu = NSMenu()
+        trayMenu.delegate = self
+        updateStatusIcon()
+    }
+
+    @objc private func statusClicked() {
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true {
+            statusItem.menu = trayMenu
+            statusItem.button?.performClick(nil)
+            statusItem.menu = nil // otherwise a left click would open the menu too
+        } else {
+            showWindow()
+        }
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let state = NSMenuItem(title: statusText(), action: nil, keyEquivalent: "")
+        state.isEnabled = false
+        menu.addItem(state)
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Открыть Zapretify", action: #selector(showWindow), keyEquivalent: "").target = self
         menu.addItem(.separator())
+        menu.addItem(withTitle: zapretOn ? "Выключить Zapret" : "Включить Zapret", action: #selector(toggleZapret), keyEquivalent: "").target = self
+        menu.addItem(withTitle: tgOn ? "Выключить Telegram-прокси" : "Включить Telegram-прокси", action: #selector(toggleTG), keyEquivalent: "").target = self
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Выйти из Zapretify", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        statusItem.menu = menu
+    }
+
+    private func statusText() -> String {
+        switch (zapretOn, tgOn) {
+        case (true, true): return "Защита активна: Zapret и Telegram"
+        case (true, false): return "Zapret работает"
+        case (false, true): return "Работает Telegram-прокси"
+        default: return "Службы остановлены"
+        }
+    }
+
+    private func updateStatusIcon() {
+        // Filled shield while something is running, outline when everything is stopped.
+        let name = zapretOn || tgOn ? "shield.lefthalf.filled" : "shield"
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: "Zapretify")
+        image?.isTemplate = true
+        statusItem.button?.image = image
+        statusItem.button?.toolTip = "Zapretify — " + statusText()
+    }
+
+    @objc private func toggleZapret() { callAPI(zapretOn ? "/api/zapret/stop" : "/api/zapret/start") }
+    @objc private func toggleTG() { callAPI(tgOn ? "/api/tg/stop" : "/api/tg/start") }
+
+    // MARK: core API (the same session token as the UI)
+
+    private func apiRequest(_ path: String, post: Bool) -> URLRequest? {
+        guard let ui = uiURL, var c = URLComponents(url: ui, resolvingAgainstBaseURL: false),
+              let token = c.queryItems?.first(where: { $0.name == "token" })?.value else { return nil }
+        c.path = path
+        c.queryItems = nil
+        guard let url = c.url else { return nil }
+        var r = URLRequest(url: url, timeoutInterval: post ? 90 : 5)
+        r.httpMethod = post ? "POST" : "GET"
+        r.setValue(token, forHTTPHeaderField: "X-Zapretify-Token")
+        return r
+    }
+
+    private func refreshStatus() {
+        guard let req = apiRequest("/api/status", post: false) else { return }
+        URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
+            guard let data, let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            let z = (obj["zapret"] as? [String: Any])?["is_running"] as? Bool ?? false
+            let t = obj["tg_proxy"] as? Bool ?? false
+            DispatchQueue.main.async {
+                self?.zapretOn = z
+                self?.tgOn = t
+                self?.updateStatusIcon()
+            }
+        }.resume()
+    }
+
+    private func callAPI(_ path: String) {
+        guard let req = apiRequest(path, post: true) else { return }
+        URLSession.shared.dataTask(with: req) { [weak self] data, resp, _ in
+            DispatchQueue.main.async {
+                if let http = resp as? HTTPURLResponse, http.statusCode >= 400 {
+                    let msg = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["error"] as? String
+                    self?.notify(msg ?? "Не удалось выполнить действие")
+                }
+                self?.refreshStatus()
+            }
+        }.resume()
+    }
+
+    private func notify(_ text: String) {
+        let alert = NSAlert()
+        alert.messageText = "Zapretify"
+        alert.informativeText = text
+        NSApp.activate()
+        alert.runModal()
     }
 
     private func buildMenu() {

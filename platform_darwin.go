@@ -2,11 +2,15 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"zapretify/core/logger"
 	"zapretify/core/macdaemon"
+	"zapretify/core/platform"
 	"zapretify/core/zapret"
 )
 
@@ -64,5 +68,34 @@ func copyMissing(src, dst string) {
 	}
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
 		logger.Log("[Zapretify] Не удалось скопировать %s: %v", filepath.Base(dst), err)
+	}
+}
+
+// addPlatformDiagnostics adds the macOS checks: the root service and other engines (ZapretMac).
+func addPlatformDiagnostics(r *platform.DiagnosticReport) {
+	state := ""
+	if _, err := macdaemon.Call(macdaemon.Request{Cmd: macdaemon.CmdStatus}, 3*time.Second); err != nil {
+		state = err.Error()
+		r.OverallStatus = "ERROR"
+	}
+	r.EngineService = &state
+
+	ours := filepath.Join(macdaemon.RootDir, "engine", "utunws")
+	out, _ := exec.Command("pgrep", "-x", "utunws").Output()
+	for _, f := range strings.Fields(string(out)) {
+		pid, err := strconv.Atoi(f)
+		if err != nil {
+			continue
+		}
+		args, _ := exec.Command("ps", "-o", "args=", "-p", f).Output()
+		path := strings.TrimSpace(string(args))
+		if strings.HasPrefix(path, ours+" ") {
+			continue
+		}
+		if i := strings.Index(path, "/utunws"); i >= 0 {
+			path = path[:i+len("/utunws")]
+		}
+		r.ForeignWinws = append(r.ForeignWinws, platform.ForeignProcess{PID: pid, Path: path})
+		r.OverallStatus = "ERROR"
 	}
 }

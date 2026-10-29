@@ -309,10 +309,10 @@ func (a *App) StartZapret(strategyID string) error {
 	}
 	err := a.runner.Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
 	if err != nil {
-		logger.Log("[Zapret] Ошибка запуска процесса runner: %v", err)
+		logger.Log("[Zapret] %s: %v", pfText("Ошибка запуска процесса runner", "Ошибка запуска Zapret"), err)
 		return err
 	}
-	logger.Log("[Zapret] Фоновый процесс runner успешно запущен.")
+	logger.Log("[Zapret] %s", pfText("Фоновый процесс runner успешно запущен.", "Zapret запущен."))
 	return nil
 }
 
@@ -336,7 +336,7 @@ func isNoSuchProcess(err error) bool {
 // ForceKillZapret is the explicit "emergency reset" button: unlike the regular Stop it terminates
 // EVERY winws.exe in the system (the user asked for a full reset), so the UI asks for confirmation.
 func (a *App) ForceKillZapret() error {
-	logger.Log("[Zapret] Аварийный сброс: завершение всех процессов winws.exe...")
+	logger.Log("[Zapret] %s", pfText("Аварийный сброс: завершение всех процессов winws.exe...", "Аварийная остановка движка обхода..."))
 	var errs []error
 	if a.runner != nil {
 		if err := a.runner.Stop(); err != nil {
@@ -375,13 +375,15 @@ func (a *App) Shutdown() {
 		zapret.StopAutoBenchmark()
 
 		// 2. Остановка runner-процесса Zapret (winws.exe)
-		logger.Log("[App] Остановка фонового процесса Zapret (winws.exe)...")
+		logger.Log("[App] %s", pfText("Остановка фонового процесса Zapret (winws.exe)...", "Остановка Zapret..."))
 		if a.runner != nil {
 			_ = a.runner.Stop()
 		}
 
 		// 3. Остановка системной службы Windows zapret (если активна)
-		logger.Log("[App] Остановка системной службы Windows zapret...")
+		if runtime.GOOS == "windows" {
+			logger.Log("[App] Остановка системной службы Windows zapret...")
+		}
 		_ = zapret.StopService(a.binDir)
 
 		// 4. Остановка Telegram Proxy
@@ -749,7 +751,9 @@ func (a *App) SetIPSetMode(mode string) error {
 }
 
 func (a *App) GetDiagnostics() platform.DiagnosticReport {
-	return platform.RunDiagnostics(a.binDir)
+	report := platform.RunDiagnostics(a.binDir)
+	addPlatformDiagnostics(&report)
+	return report
 }
 
 // Updaters
