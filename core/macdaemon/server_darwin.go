@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -14,6 +15,9 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+// maxRequestSize bounds a command: the largest real one is a strategy ID.
+const maxRequestSize = 4 << 10
 
 // Server is zapretifyd: it accepts commands on the socket and owns the engine.
 type Server struct {
@@ -96,7 +100,7 @@ func (s *Server) handle(conn net.Conn) {
 	}
 
 	var req Request
-	if err := json.NewDecoder(conn).Decode(&req); err != nil {
+	if err := json.NewDecoder(io.LimitReader(conn, maxRequestSize)).Decode(&req); err != nil {
 		reply(fmt.Errorf("неверный запрос: %w", err))
 		return
 	}
@@ -106,11 +110,12 @@ func (s *Server) handle(conn net.Conn) {
 	switch req.Cmd {
 	case CmdStatus:
 	case CmdStart:
-		var dataDir string
-		if dataDir, err = userDataDir(uid, s.OwnerUID); err == nil {
+		var home string
+		var dataUID int
+		if home, dataUID, err = userHome(uid, s.OwnerUID); err == nil {
 			s.stopEngine()
 			s.logf("запуск стратегии %q", req.Strategy)
-			if err = s.startEngine(req.Strategy, dataDir); err != nil {
+			if err = s.startEngine(req.Strategy, home, dataUID); err != nil {
 				s.logf("ошибка запуска: %v", err)
 			}
 		}
@@ -137,17 +142,21 @@ func (s *Server) fillStatus(r *Response) {
 
 func (s *Server) logf(format string, args ...any) { log.Printf(format, args...) }
 
-// userDataDir is the application data dir of the user the daemon works for; root acts for the owner.
-func userDataDir(peerUID, ownerUID int) (string, error) {
+// userHome is the home folder and uid of the user the daemon works for; root acts for the owner.
+// The bases are read from UserDataSubdir inside it and must belong to that uid.
+func userHome(peerUID, ownerUID int) (string, int, error) {
 	uid := peerUID
 	if uid == 0 {
 		uid = ownerUID
 	}
 	u, err := user.LookupId(fmt.Sprint(uid))
 	if err != nil {
-		return "", fmt.Errorf("пользователь %d: %w", uid, err)
+		return "", 0, fmt.Errorf("пользователь %d: %w", uid, err)
 	}
-	return filepath.Join(u.HomeDir, UserDataSubdir), nil
+	if !filepath.IsAbs(u.HomeDir) {
+		return "", 0, fmt.Errorf("пользователь %d: домашняя папка %q", uid, u.HomeDir)
+	}
+	return u.HomeDir, uid, nil
 }
 
 func peerUID(conn net.Conn) (int, error) {

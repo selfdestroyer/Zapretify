@@ -49,6 +49,9 @@ func TestValidateEngineArgsRejects(t *testing.T) {
 		{"--hostlist=relative/list.txt"},
 		{"--dpi-desync-fake-tls=$(id)"},
 		{"--filter-tcp=443", "--wf-tcp=80"},
+		{"--hostlist=" + testLists + "/$HOME.txt"},
+		{"--hostlist=" + testLists + "/*.txt"},
+		{"--hostlist=" + testLists + "/a\"b.txt"},
 	} {
 		if err := ValidateEngineArgs(args, testLists, testBin); err == nil {
 			t.Errorf("expected an error for %q", args)

@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+const testRel = "Library/Application Support/Zapretify"
+
 func writeFile(t *testing.T, p, data string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
@@ -19,15 +21,28 @@ func writeFile(t *testing.T, p, data string) {
 	}
 }
 
-func TestImportBases(t *testing.T) {
-	src, root := t.TempDir(), t.TempDir()
-	writeFile(t, filepath.Join(src, "strategies.json"), `{"strategies":[]}`)
-	writeFile(t, filepath.Join(src, "lists", "list-general.txt"), "discord.com\n")
-	writeFile(t, filepath.Join(src, "lists", "ipset-all.txt.backup"), "1.2.3.0/24\n") // not *.txt: skipped
-	writeFile(t, filepath.Join(src, "bin", "quic.bin"), "\x01\x02")
-	writeFile(t, filepath.Join(src, "bin", "winws.exe"), "MZ") // not a fake: skipped
+// testHome is a fake home folder with real paths (t.TempDir sits under the /var symlink on macOS).
+func testHome(t *testing.T) (home, data string) {
+	t.Helper()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data = filepath.Join(home, testRel)
+	writeFile(t, filepath.Join(data, "strategies.json"), `{"strategies":[]}`)
+	writeFile(t, filepath.Join(data, "lists", "list-general.txt"), "discord.com\n")
+	writeFile(t, filepath.Join(data, "bin", "quic.bin"), "\x01\x02")
+	return home, data
+}
 
-	b, err := ImportBases(src, root)
+func TestImportBases(t *testing.T) {
+	home, data := testHome(t)
+	root := t.TempDir()
+	uid := os.Getuid()
+	writeFile(t, filepath.Join(data, "lists", "ipset-all.txt.backup"), "1.2.3.0/24\n") // not *.txt: skipped
+	writeFile(t, filepath.Join(data, "bin", "winws.exe"), "MZ")                        // not a fake: skipped
+
+	b, err := ImportBases(home, testRel, root, uid)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,38 +53,61 @@ func TestImportBases(t *testing.T) {
 	assertFiles(t, b.BinDir, "quic.bin")
 
 	// A list removed by the user disappears from the daemon's copy on the next import.
-	_ = os.Remove(filepath.Join(src, "lists", "list-general.txt"))
-	writeFile(t, filepath.Join(src, "lists", "list-google.txt"), "youtube.com\n")
-	if _, err := ImportBases(src, root); err != nil {
+	_ = os.Remove(filepath.Join(data, "lists", "list-general.txt"))
+	writeFile(t, filepath.Join(data, "lists", "list-google.txt"), "youtube.com\n")
+	if _, err := ImportBases(home, testRel, root, uid); err != nil {
 		t.Fatal(err)
 	}
 	assertFiles(t, b.ListsDir, "list-google.txt")
 }
 
 func TestImportBasesRefusesSymlinks(t *testing.T) {
-	src, root := t.TempDir(), t.TempDir()
-	writeFile(t, filepath.Join(src, "strategies.json"), `{}`)
-	writeFile(t, filepath.Join(src, "bin", "quic.bin"), "x")
-	writeFile(t, filepath.Join(src, "lists", "list-general.txt"), "a\n")
-
+	uid := os.Getuid()
 	secret := filepath.Join(t.TempDir(), "secret")
 	writeFile(t, secret, "root only\n")
-	if err := os.Symlink(secret, filepath.Join(src, "lists", "list-exclude.txt")); err != nil {
+
+	// A symlinked list file.
+	home, data := testHome(t)
+	if err := os.Symlink(secret, filepath.Join(data, "lists", "list-exclude.txt")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ImportBases(src, root); err == nil {
+	if _, err := ImportBases(home, testRel, t.TempDir(), uid); err == nil {
 		t.Fatal("a symlinked list must be refused")
 	}
 
-	// The whole lists/ dir as a symlink is refused too.
-	src2 := t.TempDir()
-	writeFile(t, filepath.Join(src2, "strategies.json"), `{}`)
-	writeFile(t, filepath.Join(src2, "bin", "quic.bin"), "x")
-	if err := os.Symlink(filepath.Dir(secret), filepath.Join(src2, "lists")); err != nil {
+	// lists/ itself as a symlink.
+	home, data = testHome(t)
+	_ = os.RemoveAll(filepath.Join(data, "lists"))
+	if err := os.Symlink(filepath.Dir(secret), filepath.Join(data, "lists")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ImportBases(src2, root); err == nil || !strings.Contains(err.Error(), "не является папкой") {
+	if _, err := ImportBases(home, testRel, t.TempDir(), uid); err == nil || !strings.Contains(err.Error(), "не является папкой") {
 		t.Fatalf("a symlinked lists dir must be refused, got %v", err)
+	}
+
+	// A folder above the data dir as a symlink ("Application Support" → somewhere else).
+	home, data = testHome(t)
+	elsewhere := filepath.Join(t.TempDir(), "AS")
+	if err := os.Rename(filepath.Dir(data), elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Dir(data)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ImportBases(home, testRel, t.TempDir(), uid); err == nil {
+		t.Fatal("a symlinked parent folder must be refused")
+	}
+
+	if _, err := ImportBases(home, "Library/../../etc", t.TempDir(), uid); err == nil {
+		t.Fatal(".. must be refused")
+	}
+}
+
+// Files of another user (or hard links to them) are refused: the copies are readable by everyone.
+func TestImportBasesRefusesForeignFiles(t *testing.T) {
+	home, _ := testHome(t)
+	if _, err := ImportBases(home, testRel, t.TempDir(), os.Getuid()+1); err == nil || !strings.Contains(err.Error(), "другому пользователю") {
+		t.Fatalf("files of another uid must be refused, got %v", err)
 	}
 }
 

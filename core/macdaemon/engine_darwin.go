@@ -52,12 +52,12 @@ func enginePath(rootDir string) string { return filepath.Join(rootDir, "engine",
 
 // startEngine imports the user's bases, translates the strategy and brings up utunws, utun and pf.
 // Called with s.mu held and no engine running.
-func (s *Server) startEngine(strategyID, userDataDir string) error {
+func (s *Server) startEngine(strategyID, home string, uid int) error {
 	if pids := foreignEngines(enginePath(s.RootDir)); len(pids) > 0 {
 		return fmt.Errorf("уже работает другой движок utunws (PID %v), например ZapretMac. Остановите его и повторите", pids)
 	}
 
-	bases, err := ImportBases(userDataDir, s.RootDir)
+	bases, err := ImportBases(home, UserDataSubdir, s.RootDir, uid)
 	if err != nil {
 		return err
 	}
@@ -140,13 +140,13 @@ func (s *Server) launch(strategyID string) error {
 	if err := waitInterface(utunName, p.done); err != nil {
 		return fail(err)
 	}
-	if err := run("ifconfig", utunName, utunLocal, utunPeer, "netmask", "255.255.255.255", "up"); err != nil {
+	if err := run("/sbin/ifconfig", utunName, utunLocal, utunPeer, "netmask", "255.255.255.255", "up"); err != nil {
 		return fail(err)
 	}
 	if p.pfToken, err = pfEnable(); err != nil {
 		return fail(err)
 	}
-	if err := runInput(rules, "pfctl", "-a", pfAnchor, "-f", "-"); err != nil {
+	if err := runInput(rules, "/sbin/pfctl", "-a", pfAnchor, "-f", "-"); err != nil {
 		return fail(fmt.Errorf("правила pf: %w", err))
 	}
 	select {
@@ -168,9 +168,9 @@ func (s *Server) launch(strategyID string) error {
 
 // teardown removes pf rules, releases pf and stops the process. Safe to call more than once.
 func (s *Server) teardown(p *engineProc) {
-	_ = run("pfctl", "-a", pfAnchor, "-F", "all")
+	_ = run("/sbin/pfctl", "-a", pfAnchor, "-F", "all")
 	if p.pfToken != "" {
-		_ = run("pfctl", "-X", p.pfToken)
+		_ = run("/sbin/pfctl", "-X", p.pfToken)
 		p.pfToken = ""
 	}
 	if p.cmd.Process != nil {
@@ -249,13 +249,13 @@ func (s *Server) watchRoute(p *engineProc) {
 
 // cleanupStale removes what a crashed daemon may have left: our pf rules and our utunws.
 func cleanupStale(rootDir string) {
-	_ = run("pfctl", "-a", pfAnchor, "-F", "all")
-	_ = run("pkill", "-TERM", "-f", "^"+regexp.QuoteMeta(enginePath(rootDir))+" ")
+	_ = run("/sbin/pfctl", "-a", pfAnchor, "-F", "all")
+	_ = run("/usr/bin/pkill", "-TERM", "-f", "^"+regexp.QuoteMeta(enginePath(rootDir))+" ")
 }
 
 // foreignEngines lists utunws processes that are not ours (ZapretMac and the like).
 func foreignEngines(ours string) []int {
-	out, err := exec.Command("pgrep", "-x", "utunws").Output()
+	out, err := exec.Command("/usr/bin/pgrep", "-x", "utunws").Output()
 	if err != nil {
 		return nil
 	}
@@ -265,7 +265,7 @@ func foreignEngines(ours string) []int {
 		if err != nil {
 			continue
 		}
-		args, _ := exec.Command("ps", "-o", "args=", "-p", f).Output()
+		args, _ := exec.Command("/bin/ps", "-o", "args=", "-p", f).Output()
 		if !strings.HasPrefix(strings.TrimSpace(string(args)), ours+" ") {
 			pids = append(pids, pid)
 		}
@@ -301,7 +301,7 @@ func defaultRoute() (iface, gateway, vpn string, err error) {
 }
 
 func routeTo(dst string) (iface, gateway string, err error) {
-	out, err := exec.Command("route", "-n", "get", dst).Output()
+	out, err := exec.Command("/sbin/route", "-n", "get", dst).Output()
 	if err != nil {
 		return "", "", err
 	}
@@ -325,8 +325,8 @@ func isTunnelIface(name string) bool {
 }
 
 func neighborMAC(gateway string) (string, error) {
-	_ = exec.Command("ping", "-c", "1", "-t", "1", gateway).Run() // fill the ARP cache
-	out, _ := exec.Command("arp", "-n", gateway).Output()
+	_ = exec.Command("/sbin/ping", "-c", "1", "-t", "1", gateway).Run() // fill the ARP cache
+	out, _ := exec.Command("/usr/sbin/arp", "-n", gateway).Output()
 	// "? (10.1.52.1) at 0:11:22:33:44:55 on en0 ifscope [ethernet]"
 	f := strings.Fields(string(out))
 	for i := 0; i+1 < len(f); i++ {
@@ -338,7 +338,7 @@ func neighborMAC(gateway string) (string, error) {
 }
 
 func gateway6MAC() string {
-	out, err := exec.Command("route", "-n", "get", "-inet6", "default").Output()
+	out, err := exec.Command("/sbin/route", "-n", "get", "-inet6", "default").Output()
 	if err != nil {
 		return ""
 	}
@@ -351,7 +351,7 @@ func gateway6MAC() string {
 	if gw == "" {
 		return ""
 	}
-	out, _ = exec.Command("ndp", "-n", gw).Output()
+	out, _ = exec.Command("/usr/sbin/ndp", "-n", gw).Output()
 	for _, f := range strings.Fields(string(out)) {
 		if macAddr.MatchString(f) {
 			return f
@@ -363,7 +363,7 @@ func gateway6MAC() string {
 func waitInterface(name string, exited <-chan struct{}) error {
 	deadline := time.Now().Add(engineStartTimeout)
 	for time.Now().Before(deadline) {
-		if exec.Command("ifconfig", name).Run() == nil {
+		if exec.Command("/sbin/ifconfig", name).Run() == nil {
 			return nil
 		}
 		select {
@@ -377,7 +377,7 @@ func waitInterface(name string, exited <-chan struct{}) error {
 
 // pfEnable takes a reference on pf (enabling it if needed); pfctl -X with the token releases it.
 func pfEnable() (string, error) {
-	out, err := exec.Command("pfctl", "-E").CombinedOutput()
+	out, err := exec.Command("/sbin/pfctl", "-E").CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("pfctl -E: %v: %s", err, bytes.TrimSpace(out))
 	}

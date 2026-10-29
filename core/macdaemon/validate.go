@@ -51,6 +51,10 @@ var allowedOptions = map[string]bool{
 // with wordexp, so nothing it would expand ($, *, ?, ~, quotes, spaces) is allowed.
 var plainValue = regexp.MustCompile(`^[A-Za-z0-9_.:,!+=-]*$`)
 
+// pathValue is what a file path may contain. The daemon's folders have spaces ("Application Support"),
+// which the config file quotes; quotes, $, *, ~ and the like would be expanded by wordexp.
+var pathValue = regexp.MustCompile(`^/[A-Za-z0-9 _./-]+$`)
+
 // ValidateEngineArgs checks translated strategy arguments before they reach the root engine:
 // only allowed options, and every path inside one of dirs (the daemon's own lists/ and bin/).
 func ValidateEngineArgs(args []string, dirs ...string) error {
@@ -66,7 +70,7 @@ func ValidateEngineArgs(args []string, dirs ...string) error {
 			continue
 		}
 		if strings.Contains(value, "/") {
-			if !insideDirs(value, dirs) {
+			if !pathValue.MatchString(value) || !insideDirs(value, dirs) {
 				return fmt.Errorf("путь %q вне папок Zapretify", value)
 			}
 			continue
