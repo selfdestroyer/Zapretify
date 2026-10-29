@@ -201,7 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
     // Menu bar icon: a click opens the window, a right click (or ⌃-click) shows the menu,
     // the same as the tray icon on Windows.
     private func buildStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
         statusItem.button?.action = #selector(statusClicked)
         statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -244,11 +244,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
     }
 
+    // The app logo with a status dot: green — Zapret and the proxy run, orange — one of them,
+    // red — nothing. A colour icon (not a template) is allowed in the menu bar; the dot gets a dark
+    // ring so it stays visible on light and dark menu bars.
+    private lazy var logo: NSImage? = NSImage(named: "Zapretify")
+
     private func updateStatusIcon() {
-        // Filled shield while something is running, outline when everything is stopped.
-        let name = zapretOn || tgOn ? "shield.lefthalf.filled" : "shield"
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: "Zapretify")
-        image?.isTemplate = true
+        let dot: NSColor = zapretOn && tgOn ? .systemGreen : zapretOn || tgOn ? .systemOrange : .systemRed
+        let size = NSSize(width: 20, height: 18)
+        let image = NSImage(size: size, flipped: false) { [weak self] _ in
+            // The logo has a dark square background: round its corners like an app icon.
+            let box = NSRect(x: 0, y: 1, width: 16, height: 16)
+            NSGraphicsContext.saveGraphicsState()
+            NSBezierPath(roundedRect: box, xRadius: 4, yRadius: 4).addClip()
+            self?.logo?.draw(in: box)
+            NSGraphicsContext.restoreGraphicsState()
+            let r = NSRect(x: 11.5, y: 0.5, width: 8, height: 8)
+            NSColor.black.withAlphaComponent(0.55).setFill()
+            NSBezierPath(ovalIn: r.insetBy(dx: -1, dy: -1)).fill()
+            dot.setFill()
+            NSBezierPath(ovalIn: r).fill()
+            return true
+        }
+        image.isTemplate = false
+        image.accessibilityDescription = "Zapretify — " + statusText()
         statusItem.button?.image = image
         statusItem.button?.toolTip = "Zapretify — " + statusText()
     }
