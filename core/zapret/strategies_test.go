@@ -1,6 +1,7 @@
 package zapret
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -55,5 +56,17 @@ func TestRegistryFindIsStrict(t *testing.T) {
 	empty := &StrategyRegistry{}
 	if _, ok := empty.Default(); ok {
 		t.Fatalf("empty registry has no default")
+	}
+}
+
+func TestBuildArgsUnescapesCaret(t *testing.T) {
+	raw := `--dpi-desync-fake-tls=0x00000000 --dpi-desync-fake-tls=^! --hostlist="%LISTS%a^b.txt" --x=^^`
+	args := BuildArgs(raw, "bin", "lists", "disabled", "", "")
+	want := []string{"--dpi-desync-fake-tls=0x00000000", "--dpi-desync-fake-tls=!", "--hostlist=lists" + string(filepath.Separator) + "a^b.txt", "--x=^"}
+	if strings.Join(args, "|") != strings.Join(want, "|") {
+		t.Fatalf("got %q, want %q", args, want)
+	}
+	if res := BuildArgsString(raw, "bin", "lists", "disabled", "", ""); strings.Contains(res, "=^!") {
+		t.Fatalf("service args still contain ^!: %s", res)
 	}
 }

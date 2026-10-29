@@ -168,7 +168,7 @@ func buildProcessedRawArgs(
 		gameUDP = "12"
 	}
 
-	raw := rawArgs
+	raw := unescapeCaret(rawArgs)
 	raw = strings.ReplaceAll(raw, "%BIN%", bPath)
 	raw = strings.ReplaceAll(raw, "%LISTS%", lPath)
 	raw = strings.ReplaceAll(raw, "%GameFilterTCP%", gameTCP)
@@ -180,6 +180,32 @@ func buildProcessedRawArgs(
 	raw = strings.ReplaceAll(raw, "=,", "=")
 
 	return raw
+}
+
+// unescapeCaret drops cmd.exe escape carets the way the Flowseal .bat files rely on:
+// outside double quotes "^x" becomes "x" (e.g. --dpi-desync-fake-tls=^! -> !), inside quotes "^" is literal.
+// winws is started without cmd.exe, so nobody else would remove them.
+func unescapeCaret(s string) string {
+	if !strings.Contains(s, "^") {
+		return s
+	}
+	var b strings.Builder
+	inQuotes := false
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c == '"':
+			inQuotes = !inQuotes
+		case c == '^' && !inQuotes:
+			i++
+			if i < len(s) {
+				b.WriteByte(s[i])
+			}
+			continue
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
 }
 
 func splitArgs(cmd string) []string {

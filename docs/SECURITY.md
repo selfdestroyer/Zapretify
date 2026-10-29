@@ -4,7 +4,8 @@
 
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
-| 1.4.4 | :white_check_mark: | Current release (extended diagnostics, rollback of bases) |
+| 1.4.5 | :white_check_mark: | Current release (fix for FAKE TLS AUTO strategy arguments) |
+| 1.4.4 | :white_check_mark: | Supported |
 | 1.4.3 | :white_check_mark: | Supported |
 | 1.4.2 | :white_check_mark: | Supported |
 | 1.4.1 | :white_check_mark: | Supported |
