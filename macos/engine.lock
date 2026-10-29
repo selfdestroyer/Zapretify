@@ -1,0 +1,7 @@
+# Закреплённая версия движка utunws (github.com/selfdestroyer/zapret-macos-engine, ветка zapretify).
+# Сборка приложения скачивает utunws из этого релиза и сверяет SHA256; несовпадение — ошибка сборки.
+# Обновление: новый тег в репозитории движка → проверка (TestEngineDryRun, тест на Mac) → правка этого файла.
+ENGINE_REPO=selfdestroyer/zapret-macos-engine
+ENGINE_VERSION=v0.1.1
+ENGINE_COMMIT=a7a98d35a78bc19d437413e806fbe5898825067b
+ENGINE_SHA256_UNIVERSAL=9bf93599470a46abefc2c9206df1c5d1eb2efd2327c94626f931696de860e8bb
