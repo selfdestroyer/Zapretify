@@ -33,7 +33,7 @@ func prepareAppDir(appDir string) {
 		}
 		_ = os.MkdirAll(filepath.Join(appDir, sub.dir), 0o755)
 		for _, e := range entries {
-			if e.Type().IsRegular() && strings.HasSuffix(e.Name(), sub.ext) {
+			if e.Type().IsRegular() && (strings.HasSuffix(e.Name(), sub.ext) || strings.HasSuffix(e.Name(), ".txt.backup")) {
 				copyMissing(filepath.Join(src, sub.dir, e.Name()), filepath.Join(appDir, sub.dir, e.Name()))
 			}
 		}
