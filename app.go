@@ -782,6 +782,11 @@ func (a *App) startAssetSync(auto bool) error {
 			summary *updater.AssetUpdateSummary
 			err     error
 		)
+		// Keep the current bases, so an update that turns out broken can be rolled back.
+		staging, backupErr := updater.PrepareAssetsBackup(a.listsDir, a.appDir)
+		if backupErr != nil {
+			logger.Log("[Updater] Не удалось сохранить текущие базы перед обновлением: %v", backupErr)
+		}
 		func() {
 			defer func() {
 				if r := recover(); r != nil {
@@ -790,16 +795,16 @@ func (a *App) startAssetSync(auto bool) error {
 			}()
 			summary, err = updater.UpdateUpstreamAssets(a.listsDir, a.appDir)
 		}()
+		if summary != nil && len(summary.UpdatedFiles) > 0 && staging != "" {
+			if commitErr := updater.CommitAssetsBackup(a.appDir, staging); commitErr != nil {
+				logger.Log("[Updater] Не удалось сохранить предыдущие базы: %v", commitErr)
+				updater.DiscardAssetsBackup(staging)
+			}
+		} else {
+			updater.DiscardAssetsBackup(staging) // nothing was replaced: the previous snapshot stays
+		}
 		if err == nil {
-			if a.registry != nil {
-				if loadErr := a.registry.Load(); loadErr != nil {
-					logger.Log("[Updater] Не удалось перечитать strategies.json: %v", loadErr)
-				}
-			}
-			// A fresh ipset-all.txt.backup must reach ipset-all.txt in "loaded" mode: re-apply the mode.
-			if modeErr := zapret.SetIPSetMode(a.listsDir, a.cfg.Clone().Zapret.IPSetMode); modeErr != nil {
-				logger.Log("[Updater] Не удалось применить режим IPSet после обновления: %v", modeErr)
-			}
+			a.reloadAssets()
 		}
 
 		a.syncMu.Lock()
@@ -813,6 +818,70 @@ func (a *App) startAssetSync(auto bool) error {
 		a.syncMu.Unlock()
 	}()
 	return nil
+}
+
+// reloadAssets applies bases rewritten on disk: strategies are re-read and a fresh
+// ipset-all.txt.backup reaches ipset-all.txt in "loaded" mode.
+func (a *App) reloadAssets() {
+	if a.registry != nil {
+		if err := a.registry.Load(); err != nil {
+			logger.Log("[Updater] Не удалось перечитать strategies.json: %v", err)
+		}
+	}
+	if err := zapret.SetIPSetMode(a.listsDir, a.cfg.Clone().Zapret.IPSetMode); err != nil {
+		logger.Log("[Updater] Не удалось применить режим IPSet после обновления: %v", err)
+	}
+}
+
+// GetAssetsBackup describes the bases saved before the last update that changed them.
+func (a *App) GetAssetsBackup() updater.AssetsBackupInfo {
+	return updater.ReadAssetsBackup(a.appDir)
+}
+
+// AssetsRollbackResult is what RestoreAssetsBackup reports to the UI.
+type AssetsRollbackResult struct {
+	Restored     updater.AssetsBackupInfo `json:"restored"`
+	AutoDisabled bool                     `json:"auto_disabled"` // auto-update was switched off so the next launch keeps the rollback
+}
+
+// RestoreAssetsBackup brings back the saved bases; the replaced ones become the new snapshot.
+func (a *App) RestoreAssetsBackup() (AssetsRollbackResult, error) {
+	// Holding the lock keeps a synchronisation from starting while files are being restored.
+	a.syncMu.Lock()
+	defer a.syncMu.Unlock()
+	if a.syncStatus.Running {
+		return AssetsRollbackResult{}, fmt.Errorf("дождитесь окончания обновления баз")
+	}
+	restored, err := updater.RestoreAssetsBackup(a.listsDir, a.appDir)
+	if err != nil {
+		logger.Log("[Updater] Откат баз не выполнен: %v", err)
+		return AssetsRollbackResult{}, err
+	}
+	a.reloadAssets()
+	res := AssetsRollbackResult{Restored: restored}
+	if a.cfg.Clone().App.AutoUpdateAssets {
+		if err := a.cfg.Update(func(c *config.Config) { c.App.AutoUpdateAssets = false }); err != nil {
+			logger.Log("[Updater] Не удалось выключить автообновление баз: %v", err)
+		} else {
+			res.AutoDisabled = true
+		}
+	}
+	a.syncStatus = AssetSyncStatus{} // the last sync report no longer describes the files on disk
+	logger.Log("[Updater] Базы откатены к сохранённой версии от %s (стратегии %s)",
+		restored.SavedAt.Format("02.01.2006 15:04"), restored.Version)
+	return res, nil
+}
+
+// KillForeignWinws terminates winws.exe processes started from other folders.
+func (a *App) KillForeignWinws() int {
+	n := platform.KillForeignImages("winws.exe", a.binDir)
+	logger.Log("[Diag] Завершено сторонних процессов winws.exe: %d", n)
+	return n
+}
+
+// OpenNetworkSettings opens the Windows network settings, where DNS is configured.
+func (a *App) OpenNetworkSettings() error {
+	return platform.OpenNetworkSettings()
 }
 
 func (a *App) GetAssetSyncStatus() AssetSyncStatus {
@@ -894,6 +963,19 @@ func (a *App) GenerateDebugReport() string {
 		diag := platform.RunDiagnostics(a.binDir)
 		b.WriteString(fmt.Sprintf("\n--- Диагностика системы ---\nTCP Timestamps OK: %v\nGoodbyeDPI конфликт: %v\nWinDivert файлы: %v\n",
 			diag.TCPTimestampsOK, diag.GoodbyeDPIRun, diag.WinDivertExists))
+		for _, p := range diag.ForeignWinws {
+			b.WriteString(fmt.Sprintf("Сторонний winws.exe: PID %d %s\n", p.PID, p.Path))
+		}
+		if len(diag.VPNAdapters) > 0 {
+			b.WriteString("VPN/TUN адаптеры: " + strings.Join(diag.VPNAdapters, "; ") + "\n")
+		}
+		if !diag.DNS.Checked {
+			b.WriteString("Проверка DNS: зашифрованный DNS недоступен\n")
+		}
+		for _, d := range diag.DNS.Spoofed {
+			b.WriteString(fmt.Sprintf("Подмена DNS: %s — %s (система: %s; DoH: %s)\n",
+				d.Domain, d.Reason, strings.Join(d.System, ", "), strings.Join(d.Secure, ", ")))
+		}
 	}
 
 	b.WriteString("\n--- ПОСЛЕДНИЕ СОБЫТИЯ И ЛОГИ (zapretify.log) ---\n")

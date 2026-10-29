@@ -16,3 +16,9 @@ func TerminateProcess(pid int) error {
 
 // KillImageInDir is a no-op outside Windows.
 func KillImageInDir(exeName, dir string) int { return 0 }
+
+// ForeignImages is only implemented on Windows.
+func ForeignImages(exeName, dir string) []ForeignProcess { return nil }
+
+// KillForeignImages is a no-op outside Windows.
+func KillForeignImages(exeName, dir string) int { return 0 }

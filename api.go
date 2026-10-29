@@ -508,6 +508,24 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
+	mux.HandleFunc("/api/platform/kill-foreign-winws", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
+		writeJSON(w, map[string]int{"killed": app.KillForeignWinws()})
+	})
+
+	mux.HandleFunc("/api/platform/network-settings", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
+		if err := app.OpenNetworkSettings(); err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]string{"status": "ok"})
+	})
+
 	mux.HandleFunc("/api/updater/check", func(w http.ResponseWriter, r *http.Request) {
 		if !requireGet(w, r) {
 			return
@@ -538,6 +556,25 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		writeJSON(w, app.GetAssetSyncStatus())
+	})
+
+	mux.HandleFunc("/api/updater/assets/backup", func(w http.ResponseWriter, r *http.Request) {
+		if !requireGet(w, r) {
+			return
+		}
+		writeJSON(w, app.GetAssetsBackup())
+	})
+
+	mux.HandleFunc("/api/updater/assets/rollback", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
+		res, err := app.RestoreAssetsBackup()
+		if err != nil {
+			writeJSONStatus(w, http.StatusInternalServerError, map[string]string{"status": "error", "error": err.Error()})
+			return
+		}
+		writeJSON(w, res)
 	})
 
 	mux.HandleFunc("/api/lists", func(w http.ResponseWriter, r *http.Request) {

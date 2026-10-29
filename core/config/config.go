@@ -14,7 +14,7 @@ import (
 	"zapretify/core/logger"
 )
 
-const Version = "1.4.3"
+const Version = "1.4.4"
 const DefaultGithubRepo = "selfdestroyer/Zapretify"
 
 var (

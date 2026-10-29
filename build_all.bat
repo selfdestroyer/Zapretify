@@ -22,7 +22,7 @@ if %errorlevel% neq 0 (
 echo [OK] Zapretify.exe успешно скомпилирован! (Размер: ~8 МБ)
 echo.
 
-set APP_VERSION=1.4.3
+set APP_VERSION=1.4.4
 
 :: 2. Create Portable ZIP Package
 echo [2/3] Создание Portable ZIP архива (без config.json: он создаётся при первом запуске)...

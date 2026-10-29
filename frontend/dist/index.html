@@ -344,7 +344,9 @@ button,input,select{font-family:inherit;color:inherit}
 .ed-foot .fr{display:flex;align-items:center;gap:12px;flex:none}
 /* диагностика */
 .dg{flex-direction:row;gap:14px}
-.dg-l{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px}
+.dg-l{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;gap:8px}
+#dg-list{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+#dg-list .ck{flex:none}
 .dg-r{width:292px;flex:none;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:14px;background:var(--card);padding:6px 14px 4px}
 .dg-r h3{font-size:12px;font-weight:600;color:var(--text-2);padding:8px 0 4px}
 .ck{display:flex;align-items:center;gap:11px;min-height:48px;padding:7px 8px 7px 10px;border:1px solid var(--border);border-radius:12px;background:var(--card);transition:border-color .3s,background .3s}
@@ -388,6 +390,14 @@ button,input,select{font-family:inherit;color:inherit}
 .ust .c-ok{color:var(--green)}.ust .c-warn{color:var(--amber)}.ust .c-bad{color:var(--red)}.ust .c-ind{color:var(--indigo-text)}
 .ust.in>*{animation:swapIn .32s var(--ease)}
 .upc .btns{display:flex;gap:8px;flex-wrap:wrap}
+.ubk{font-size:11.5px;color:var(--muted);line-height:1.4}
+.ubk b{color:var(--text-2);font-weight:600}
+.hlp-b{flex:0 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px 10px;font-size:12.5px;line-height:1.5;color:var(--text-2)}
+.hlp-b h4{font-size:12px;font-weight:700;color:var(--text);margin:10px 0 3px}
+.hlp-b ol{margin:0;padding-left:18px}.hlp-b li{margin:2px 0}
+.hlp-b b{color:var(--text);font-weight:600}
+.hlp-b .kv{margin-top:6px;border:1px solid var(--border);border-radius:10px;background:var(--raised);padding:6px 10px;font:11.5px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace;color:var(--text-2);overflow-wrap:anywhere}
+.hlp-b .kv div+div{margin-top:3px}
 .pbar{height:6px;border-radius:99px;background:var(--raised);overflow:hidden;margin-top:9px;position:relative}
 .pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--indigo),var(--teal));transition:width .45s var(--ease);border-radius:99px}
 .pbar.ind i{width:38%;animation:slide 1.3s ease-in-out infinite}
@@ -797,7 +807,8 @@ select.inp option{background:var(--card)}
       <section class="upc">
         <div class="upc-h"><div class="chip" style="--c:var(--teal);--c-soft:var(--teal-soft);--c-line:var(--teal-line)"><svg class="ico"><use href="#i-list"/></svg></div><div><h3>Списки и стратегии</h3><p>Базы Flowseal · ваши списки не меняются</p></div></div>
         <div class="ust" id="up-as-st"></div>
-        <div class="btns"><button class="btn btn-primary" id="up-sync"><i class="spin"></i><svg class="ico"><use href="#i-refresh"/></svg><span>Обновить базы</span></button></div>
+        <p class="ubk" id="up-bk" hidden></p>
+        <div class="btns"><button class="btn btn-primary" id="up-sync"><i class="spin"></i><svg class="ico"><use href="#i-refresh"/></svg><span>Обновить базы</span></button><button class="btn btn-ghost" id="up-rollback" hidden><i class="spin"></i><svg class="ico"><use href="#i-left"/></svg><span>Откатить</span></button></div>
       </section>
     </div>
   </div>
@@ -834,6 +845,19 @@ select.inp option{background:var(--card)}
         <button class="btn btn-ghost" id="dlg-cancel">Отмена</button>
         <button class="btn btn-primary" id="dlg-save" disabled><i class="spin"></i><svg class="ico" id="save-ok" style="display:none"><use href="#i-check"/></svg><span id="save-lbl">Сохранить</span></button>
       </div>
+    </div>
+  </div>
+
+  <!-- окно-подсказка диагностики -->
+  <div class="overlay" id="hlp-ov">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="hlp-title">
+      <div class="dlg-h">
+        <div class="chip" id="hlp-chip"><svg class="ico"><use href="#i-alert"/></svg></div>
+        <div class="tt"><h3 id="hlp-title"></h3><p id="hlp-sub"></p></div>
+        <button class="x" id="hlp-x" aria-label="Закрыть"><svg class="ico"><use href="#i-x"/></svg></button>
+      </div>
+      <div class="hlp-b" id="hlp-body"></div>
+      <div class="dlg-f"><span class="sp"></span><button class="btn btn-ghost" id="hlp-act" hidden><i class="spin"></i><span></span></button><button class="btn btn-primary" id="hlp-ok">Понятно</button></div>
     </div>
   </div>
 
@@ -1531,6 +1555,7 @@ $('#dlg-reset').onclick = () => {
 
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
+  if ($('#hlp-ov').classList.contains('open')) { closeHelp(); return; }
   if (D && body.classList.contains('onadv')) { body.classList.remove('onadv'); setText($('#dlg-sub'), dlgSub()); }
   else if (D) closeDlg(true);
   else if ($('#sheet').classList.contains('open')) sheet(false);
@@ -1672,10 +1697,26 @@ const dgItems = () => { const d = DG.d || {}; return [
   { t: 'Права администратора', v: d.is_admin ? 'Есть — полный доступ' : 'Нет — часть функций недоступна', s: d.is_admin ? 'ok' : 'warn', a: d.is_admin ? null : ['От админа', 'admin'] },
   { t: 'Конфликт с GoodbyeDPI', v: d.goodbyedpi_running ? 'Обнаружен — закройте GoodbyeDPI' : 'Не обнаружен', s: d.goodbyedpi_running ? 'bad' : 'ok' },
   { t: 'Драйвер WinDivert', v: d.windivert_exists ? 'Все файлы найдены в bin/' : 'Файлы не найдены в bin/', s: d.windivert_exists ? 'ok' : 'bad' },
-  { t: 'TCP Timestamps', v: d.tcp_timestamps_ok ? 'Включены — оптимально' : 'Выключены — лучше включить', s: d.tcp_timestamps_ok ? 'ok' : 'warn', a: d.tcp_timestamps_ok ? null : ['Включить', 'tcp'] }]; };
+  { t: 'TCP Timestamps', v: d.tcp_timestamps_ok ? 'Включены — оптимально' : 'Выключены — лучше включить', s: d.tcp_timestamps_ok ? 'ok' : 'warn', a: d.tcp_timestamps_ok ? null : ['Включить', 'tcp'] },
+  dgForeign(d), dgVPN(d), dgDNS(d)]; };
+function dgForeign(d) {
+  const n = (d.foreign_winws || []).length;
+  return { t: 'Сторонний winws.exe', v: n ? (n > 1 ? 'Запущено ' + n + ' из других папок' : 'Запущен из другой папки') : 'Не обнаружен', s: n ? 'bad' : 'ok', h: n ? 'winws' : null };
+}
+function dgVPN(d) {
+  const a = d.vpn_adapters || [];
+  return { t: 'VPN и TUN-адаптеры', v: a.length ? 'Активен: ' + a[0].replace(/ \(.*$/, '') + (a.length > 1 ? ' и ещё ' + (a.length - 1) : '') : 'Не обнаружены', s: a.length ? 'warn' : 'ok', h: a.length ? 'vpn' : null };
+}
+function dgDNS(d) {
+  const x = d.dns || {}, sp = x.spoofed || [];
+  if (DG.loaded && !x.checked) return { t: 'Подмена DNS', v: 'Не проверено — зашифрованный DNS недоступен', s: 'ok' };
+  return { t: 'Подмена DNS', v: sp.length ? 'Подменяется: ' + sp.map(z => z.domain).join(', ') : 'Не обнаружена', s: sp.length ? 'warn' : 'ok', h: sp.length ? 'dns' : null };
+}
 const dgProblems = () => DG.loaded ? dgItems().filter(x => x.s !== 'ok').length : 0;
 function drawDiag(running) {
-  $('#dg-list').innerHTML = dgItems().map((x, i) => '<div class="ck' + (running ? '' : ' in') + '" data-s="' + (running ? 'run' : x.s) + '" style="--i:' + i + '"><span class="ci">' + (running ? '<i></i>' : ico(x.s === 'ok' ? 'i-check' : x.s === 'warn' ? 'i-bang' : 'i-x')) + '</span><div class="ct"><b>' + x.t + '</b><span>' + (running ? 'Проверяю…' : x.v) + '</span></div>' + (!running && x.a ? '<button class="btn btn-ghost btn-sm" data-fix="' + x.a[1] + '"><i class="spin"></i><span>' + x.a[0] + '</span></button>' : '') + '</div>').join('');
+  // Сначала ошибки, потом предупреждения: проблемы не должны прятаться под прокруткой.
+  const rank = { bad: 0, warn: 1, ok: 2 }, items = running ? dgItems() : dgItems().sort((a, b) => rank[a.s] - rank[b.s]);
+  $('#dg-list').innerHTML = items.map((x, i) => '<div class="ck' + (running ? '' : ' in') + '" data-s="' + (running ? 'run' : x.s) + '" style="--i:' + i + '"><span class="ci">' + (running ? '<i></i>' : ico(x.s === 'ok' ? 'i-check' : x.s === 'warn' ? 'i-bang' : 'i-x')) + '</span><div class="ct"><b>' + x.t + '</b><span>' + (running ? 'Проверяю…' : x.v) + '</span></div>' + (!running && x.a ? '<button class="btn btn-ghost btn-sm" data-fix="' + x.a[1] + '"><i class="spin"></i><span>' + x.a[0] + '</span></button>' : '') + (!running && x.h ? '<button class="btn btn-ghost btn-sm" data-help="' + x.h + '">Как исправить</button>' : '') + '</div>').join('');
   const chip = $('#dg-chip'), n = dgProblems(), bad = dgItems().some(x => x.s === 'bad');
   chip.classList.toggle('show', !running && DG.loaded); chip.dataset.t = n === 0 ? 'ok' : bad ? 'bad' : 'warn'; $('.dot', chip).style.display = 'none';
   setText($('#dg-chip-t'), n === 0 ? 'Всё в порядке' : n + ' ' + plural(n, 'замечание', 'замечания', 'замечаний'));
@@ -1689,6 +1730,7 @@ async function loadDiag(silent) {
 ENTER.diag = () => { drawDiag(!DG.loaded); loadDiag(); };
 $('#dg-refresh').onclick = () => loadDiag();
 $('#dg-list').onclick = async e => {
+  const hb = e.target.closest('[data-help]'); if (hb) { openHelp(hb.dataset.help); return; }
   const b = e.target.closest('[data-fix]'); if (!b || b.classList.contains('is-pending')) return;
   b.classList.add('is-pending');
   if (b.dataset.fix === 'admin') {
@@ -1700,6 +1742,58 @@ $('#dg-list').onclick = async e => {
   catch (err) { toast('Не удалось включить: ' + err.message, 'err'); }
   loadDiag();
 };
+/* окно «Как исправить»: суть проблемы и шаги */
+const HELP = {
+  winws: d => {
+    const p = d.foreign_winws || [], n = p.length;
+    return { tone: 'bad', title: 'Запущен сторонний winws.exe', sub: 'Другая копия zapret обрабатывает тот же трафик',
+      body: '<h4>Что происходит</h4><p>Кроме Zapretify в системе работает ' + n + ' ' + plural(n, 'процесс', 'процесса', 'процессов') + ' winws.exe из другой папки — например, батники Flowseal (general.bat, service.bat) или старая копия Zapretify.</p>' +
+        '<div class="kv">' + p.map(x => '<div>PID ' + x.pid + ' · ' + esc(x.path || 'путь недоступен') + '</div>').join('') + '</div>' +
+        '<h4>Почему это мешает</h4><p>Два winws.exe одновременно перехватывают одни и те же пакеты через WinDivert. Стратегии накладываются друг на друга, и сайты перестают открываться даже с рабочей стратегией.</p>' +
+        '<h4>Как исправить</h4><ol><li>Нажмите <b>«Завершить процессы»</b> ниже.</li><li>Если процесс появляется снова — это служба другой сборки zapret. Запустите её <b>service.bat</b> и выберите <b>Remove Services</b>.</li><li>Обновите диагностику, чтобы проверить ещё раз.</li></ol>',
+      act: ['Завершить процессы', async () => { const r = await post('/api/platform/kill-foreign-winws'); toast(r.killed ? 'Завершено процессов: ' + r.killed : 'Не удалось завершить — нужны права администратора', r.killed ? 'ok' : 'err'); }] };
+  },
+  vpn: d => {
+    const a = d.vpn_adapters || [];
+    return { tone: 'warn', title: 'Активен VPN или TUN-адаптер', sub: 'Трафик может идти в обход Zapret',
+      body: '<h4>Что происходит</h4><p>В системе подключены сетевые адаптеры VPN или прокси-клиента в режиме TUN:</p><div class="kv">' + a.map(x => '<div>' + esc(x) + '</div>').join('') + '</div>' +
+        '<h4>Почему это мешает</h4><p>Трафик, который уходит в VPN-туннель, шифруется раньше, чем его видит Zapret, — стратегии на него не действуют. Некоторые TUN-клиенты (sing-box, Clash, Hiddify) к тому же конфликтуют с драйвером WinDivert.</p>' +
+        '<h4>Как исправить</h4><ol><li>Если сайты открываются — ничего делать не нужно: VPN может работать только для отдельных приложений.</li><li>Если не открываются — отключите VPN или выключите в клиенте режим <b>TUN</b> («весь трафик через VPN»).</li><li>Перезапустите Zapret и обновите диагностику.</li></ol>' };
+  },
+  dns: d => {
+    const sp = (d.dns || {}).spoofed || [];
+    return { tone: 'warn', title: 'Провайдер подменяет DNS', sub: 'Сайты могут не открываться ни с одной стратегией',
+      body: '<h4>Что происходит</h4><p>Системный DNS отвечает на запросы о заблокированных сайтах не так, как зашифрованный DNS Cloudflare и Google, который провайдер изменить не может:</p>' +
+        '<div class="kv">' + sp.map(x => '<div><b>' + esc(x.domain) + '</b> — ' + esc(x.reason) + '<br>система: ' + esc((x.system || []).join(', ') || 'нет ответа') + '<br>на самом деле: ' + esc((x.secure || []).join(', ')) + '</div>').join('') + '</div>' +
+        '<h4>Почему это мешает</h4><p>Zapret маскирует соединение с настоящим сервером, а из-за подмены браузер подключается к заглушке провайдера или не находит сайт вовсе. Смена стратегии здесь не поможет.</p>' +
+        '<h4>Как исправить</h4><p>Включите зашифрованный DNS — его провайдер подменить не сможет.</p><ol>' +
+        '<li><b>Windows 11:</b> Параметры → Сеть и Интернет → ваше подключение (Ethernet или Wi-Fi) → «Назначение DNS-сервера» → Изменить → Вручную. Для IPv4 укажите <b>1.1.1.1</b> и <b>1.0.0.1</b>, в «Шифровании DNS» выберите «Только зашифрованные (DNS по HTTPS)».</li>' +
+        '<li><b>Windows 10</b> системное шифрование DNS не умеет — включите его в браузере. Chrome, Edge, Яндекс: Настройки → Конфиденциальность и безопасность → «Использовать безопасный DNS» → Cloudflare. Firefox: Настройки → Приватность → «DNS через HTTPS».</li>' +
+        '<li>Перезапустите браузер и обновите диагностику.</li></ol>',
+      act: ['Открыть настройки сети', async () => { await post('/api/platform/network-settings'); }] };
+  }
+};
+let HLP = null;
+function openHelp(k) {
+  const h = HELP[k](DG.d || {}); HLP = h;
+  const c = { bad: ['--red', 'i-alert'], warn: ['--amber', 'i-bang'] }[h.tone], chip = $('#hlp-chip');
+  chip.style.cssText = '--c:var(' + c[0] + ');--c-soft:var(' + c[0] + '-soft);--c-line:var(' + c[0] + '-line)'; $('use', chip).setAttribute('href', '#' + c[1]);
+  setText($('#hlp-title'), h.title); setText($('#hlp-sub'), h.sub);
+  $('#hlp-body').innerHTML = h.body; $('#hlp-body').scrollTop = 0;
+  const b = $('#hlp-act'); b.hidden = !h.act; if (h.act) setText($('span', b), h.act[0]);
+  $('#hlp-ov').classList.add('open'); $('#hlp-ok').focus();
+}
+function closeHelp() { $('#hlp-ov').classList.remove('open'); HLP = null; }
+$('#hlp-x').onclick = $('#hlp-ok').onclick = closeHelp;
+$('#hlp-ov').addEventListener('mousedown', e => { if (e.target.id === 'hlp-ov') closeHelp(); });
+$('#hlp-act').onclick = async e => {
+  const b = e.currentTarget; if (!HLP || !HLP.act || b.classList.contains('is-pending')) return;
+  b.classList.add('is-pending');
+  try { await HLP.act[1](); } catch (err) { toast(err.message, 'err'); }
+  b.classList.remove('is-pending');
+  if (HLP && HLP.tone === 'bad') { closeHelp(); loadDiag(); }
+};
+
 $('#dg-report').onclick = async e => {
   const b = e.currentTarget; if (b.classList.contains('is-pending')) return; b.classList.add('is-pending'); $('span', b).textContent = 'Собираю отчёт…';
   try {
@@ -1721,7 +1815,7 @@ async function emergency(k, btn) {
 $$('[data-em]').forEach(b => b.onclick = () => confirm2(b, () => emergency(b.dataset.em, b)));
 
 /* ================= обновления ================= */
-const UP = { avail: false, latest: '', url: '', checked: false, at: '', busy: false, err: '', as: { state: 'idle', msg: '', failed: [], changes: [], changed: false, auto: false, at: '' }, timer: null };
+const UP = { avail: false, latest: '', url: '', checked: false, at: '', busy: false, err: '', as: { state: 'idle', msg: '', failed: [], changes: [], changed: false, auto: false, at: '' }, timer: null, bk: null };
 const hm = () => { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const vnum = v => String(v || '').replace(/^v/, '');
 function renderUpApp() {
@@ -1742,14 +1836,42 @@ function renderUpAs() {
   const asLines = a => a.map(x => '<span class="sm" style="display:block">' + esc(x) + '</span>').join('');
   const asNote = (A.auto ? '<span class="sm" style="display:block">Проверено автоматически при запуске в ' + A.at + '</span>' : '') +
     (A.changed && S.z === 'on' ? '<span class="sm" style="display:block">Новые стратегии и списки применятся после перезапуска Zapret</span>' : '');
-  if (A.state === 'running') h = '<div class="row1"><i class="spin" style="display:block;border-color:var(--raised-2);border-top-color:var(--indigo-text)"></i><div><b>' + (A.auto ? 'Проверяю базы Flowseal при запуске…' : 'Скачиваю списки и стратегии…') + '</b><span class="sm">Обычно это занимает до минуты</span></div></div><div class="pbar ind"><i></i></div>';
+  if (A.state === 'rolled') h = '<div class="row1"><span class="c-ok">' + ico('i-check') + '</span><div><b>Предыдущие базы возвращены</b>' + asLines(A.changes) + '</div></div>';
+  else if (A.state === 'running') h = '<div class="row1"><i class="spin" style="display:block;border-color:var(--raised-2);border-top-color:var(--indigo-text)"></i><div><b>' + (A.auto ? 'Проверяю базы Flowseal при запуске…' : 'Скачиваю списки и стратегии…') + '</b><span class="sm">Обычно это занимает до минуты</span></div></div><div class="pbar ind"><i></i></div>';
   else if (A.state === 'done') h = '<div class="row1"><span class="c-ok">' + ico('i-check') + '</span><div><b>' + (A.changed ? 'Базы обновлены' : 'Файлы актуальны') + '</b>' + asLines(A.changes.length ? A.changes : [A.msg]) + asNote + '</div></div>';
   else if (A.state === 'partial') h = '<div class="row1"><span class="c-warn">' + ico('i-alert') + '</span><div><b>Обновлено частично</b>' + asLines(A.changes) + '<span class="sm">Не удалось скачать: ' + esc(A.failed.join(', ')) + '.' + (A.changes.length ? '' : ' В остальных файлах изменений нет.') + '</span>' + asNote + '</div></div>';
   else if (A.state === 'error') h = '<div class="row1"><span class="c-bad">' + ico('i-alert') + '</span><div><b>Ошибка обновления</b><span class="sm">' + esc(A.msg) + '</span></div></div>';
   else h = '<div class="row1"><span style="color:var(--muted)">' + ico('i-info') + '</span><div>Скачает свежие списки доменов, IP-лист, стратегии и файлы фейков из upstream Flowseal. «Мои сайты» и другие ваши списки не изменятся.</div></div>';
   if (el._h !== h) { el._h = h; el.innerHTML = h; el.classList.remove('in'); void el.offsetWidth; el.classList.add('in'); }
   $('#up-sync').classList.toggle('is-pending', A.state === 'running'); setText($('#up-sync span'), A.state === 'running' ? 'Обновляю…' : 'Обновить базы');
+  renderUpBk();
 }
+// Снимок баз, заменённых последним обновлением: его можно вернуть кнопкой.
+const bkWhen = b => { const d = new Date(b.saved_at); return isNaN(d) ? '' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) + ', ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+const bkName = b => (b.version ? 'стратегии Flowseal ' + b.version + ' · ' : '') + 'сохранены ' + bkWhen(b);
+function renderUpBk() {
+  const b = UP.bk, el = $('#up-bk'), show = !!(b && b.exists);
+  el.hidden = !show; $('#up-rollback').hidden = !show || UP.as.state === 'running';
+  if (show) el.innerHTML = 'Предыдущие базы: <b>' + esc(bkName(b)) + '</b>';
+}
+async function loadAssetsBackup() {
+  try { UP.bk = await api('/api/updater/assets/backup'); } catch (_) { UP.bk = null; }
+  renderUpBk();
+}
+$('#up-rollback').onclick = e => confirm2(e.currentTarget, async () => {
+  const b = $('#up-rollback'), A = UP.as; b.classList.add('is-pending');
+  try {
+    const r = await post('/api/updater/assets/rollback');
+    A.state = 'rolled'; A.auto = false;
+    A.changes = ['Возвращены базы: ' + bkName(r.restored)];
+    if (r.auto_disabled) { A.changes.push('Автообновление баз при запуске выключено, чтобы следующий запуск не вернул новые базы. Включить его можно в настройках приложения.'); if (appConfig && appConfig.app) appConfig.app.auto_update_assets = false; }
+    A.changes.push('Текущие базы сохранены — кнопкой «Откатить» можно вернуть их обратно.');
+    if (S.z === 'on') A.changes.push('Перезапустите Zapret, чтобы применить стратегии и списки.');
+    toast('Предыдущие базы возвращены', 'ok');
+    await loadStrategies(); FILES.forEach(x => { if (!x.user) LS[x.f].loaded = false; });
+  } catch (err) { toast('Не удалось вернуть базы: ' + err.message, 'err'); }
+  b.classList.remove('is-pending'); renderUpAs(); loadAssetsBackup();
+});
 async function checkApp(manual) {
   if (UP.busy) return; UP.busy = true; UP.err = ''; renderUpApp();
   try { const d = await api('/api/updater/check'); UP.avail = !!d.available; UP.latest = d.latest_version || ''; UP.url = d.release_url || (UP.latest ? 'https://github.com/selfdestroyer/Zapretify/releases/tag/' + UP.latest : 'https://github.com/selfdestroyer/Zapretify/releases'); UP.checked = true; UP.at = hm(); }
@@ -1760,7 +1882,7 @@ async function checkApp(manual) {
 $('#up-check').onclick = () => checkApp(true);
 $('#up-open').onclick = () => { openExternal(UP.url); toast('Открываю страницу релиза в браузере'); };
 $('#btn-version-badge').onclick = () => { goScreen('updates'); if (UP.avail) openExternal(UP.url); else if (!UP.checked) checkApp(true); };
-ENTER.updates = () => { renderUpApp(); renderUpAs(); };
+ENTER.updates = () => { renderUpApp(); renderUpAs(); loadAssetsBackup(); };
 // Следит за синхронизацией баз: и запущенной кнопкой, и автоматической при старте приложения.
 function watchAssetSync() {
   const A = UP.as;
@@ -1782,7 +1904,7 @@ async function finishAssetSync(d) {
     if ((sm.failed_files || []).length) { A.state = 'partial'; A.failed = sm.failed_files; if (!A.auto || A.changed) toast(A.auto ? 'Базы обновлены при запуске частично' : 'Базы обновлены частично'); }
     else { A.state = 'done'; if (A.auto) { if (A.changed) toast('Базы Flowseal обновлены при запуске: ' + what, 'ok'); } else toast(A.changed ? 'Базы обновлены: ' + what : 'Изменений нет, файлы актуальны', 'ok'); }
   }
-  renderUpAs();
+  renderUpAs(); loadAssetsBackup();
   if (A.changed) { await loadStrategies(); FILES.forEach(x => { if (!x.user) LS[x.f].loaded = false; }); }
 }
 $('#up-sync').onclick = async () => {

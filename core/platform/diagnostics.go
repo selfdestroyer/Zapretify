@@ -14,6 +14,17 @@ type DiagnosticReport struct {
 	WinDivertExists bool   `json:"windivert_exists"`
 	TCPTimestampsOK bool   `json:"tcp_timestamps_ok"`
 	OverallStatus   string `json:"overall_status"` // "OK", "WARNING", "ERROR"
+
+	ForeignWinws []ForeignProcess `json:"foreign_winws"` // winws.exe started from other folders
+	VPNAdapters  []string         `json:"vpn_adapters"`  // connected VPN / TUN adapters
+	DNS          DNSCheck         `json:"dns"`
+}
+
+// warn raises the overall status to WARNING unless it already is an ERROR.
+func (r *DiagnosticReport) warn() {
+	if r.OverallStatus != "ERROR" {
+		r.OverallStatus = "WARNING"
+	}
 }
 
 func RunDiagnostics(binDir string) DiagnosticReport {
@@ -22,7 +33,14 @@ func RunDiagnostics(binDir string) DiagnosticReport {
 		WinDivertExists: true,
 		TCPTimestampsOK: true,
 		OverallStatus:   "OK",
+		ForeignWinws:    []ForeignProcess{},
+		VPNAdapters:     []string{},
+		DNS:             DNSCheck{Spoofed: []DNSSpoof{}},
 	}
+
+	// The DNS check waits on the network, so it runs alongside the local checks.
+	dnsDone := make(chan DNSCheck, 1)
+	go func() { dnsDone <- CheckDNS() }()
 
 	if runtime.GOOS == "windows" {
 		// Check WinDivert64.sys
@@ -64,10 +82,27 @@ func RunDiagnostics(binDir string) DiagnosticReport {
 					report.TCPTimestampsOK = false
 				}
 			}
-			if !report.TCPTimestampsOK && report.OverallStatus != "ERROR" {
-				report.OverallStatus = "WARNING"
+			if !report.TCPTimestampsOK {
+				report.warn()
 			}
 		}
+
+		// Another copy of zapret (Flowseal's bat files, an older Zapretify) intercepts the same traffic.
+		if foreign := ForeignImages("winws.exe", binDir); len(foreign) > 0 {
+			report.ForeignWinws = foreign
+			report.OverallStatus = "ERROR"
+		}
+
+		// Traffic routed into a VPN tunnel is encrypted before WinDivert sees it, so the bypass has no effect.
+		if vpn := ActiveVPNAdapters(); len(vpn) > 0 {
+			report.VPNAdapters = vpn
+			report.warn()
+		}
+	}
+
+	report.DNS = <-dnsDone
+	if len(report.DNS.Spoofed) > 0 {
+		report.warn()
 	}
 
 	return report

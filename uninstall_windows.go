@@ -22,7 +22,7 @@ var (
 		"strategies.json", "strategies.json.tmp", "zapretify.log", "test_results.txt", "winws.pid",
 		"Zapretify.manifest",
 	}
-	uninstallDirs = []string{"bin", "lists", "assets"}
+	uninstallDirs = []string{"bin", "lists", "assets", "assets-backup", "assets-backup.new"}
 )
 
 func handleUninstall(appDir string, quiet bool) {

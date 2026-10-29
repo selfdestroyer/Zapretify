@@ -93,3 +93,41 @@ func KillImageInDir(exeName, dir string) int {
 	}
 	return killed
 }
+
+// ForeignImages lists running processes named exeName that were not started from dir\exeName:
+// copies of the bypass software from other folders that grab the same traffic.
+// A process whose path cannot be read is reported only when running as administrator,
+// because without admin rights that is also true of our own elevated winws.exe.
+func ForeignImages(exeName, dir string) []ForeignProcess {
+	want := filepath.Join(dir, exeName)
+	pids, err := pidsByImageName(exeName)
+	if err != nil {
+		return nil
+	}
+	admin := IsAdmin()
+	var found []ForeignProcess
+	for _, pid := range pids {
+		img, err := ProcessImagePath(int(pid))
+		if err != nil {
+			if admin {
+				found = append(found, ForeignProcess{PID: int(pid)})
+			}
+			continue
+		}
+		if !SamePath(img, want) {
+			found = append(found, ForeignProcess{PID: int(pid), Path: img})
+		}
+	}
+	return found
+}
+
+// KillForeignImages terminates the processes ForeignImages reports and returns how many exited.
+func KillForeignImages(exeName, dir string) int {
+	killed := 0
+	for _, p := range ForeignImages(exeName, dir) {
+		if TerminateProcess(p.PID) == nil {
+			killed++
+		}
+	}
+	return killed
+}
