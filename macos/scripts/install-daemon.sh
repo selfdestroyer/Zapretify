@@ -1,7 +1,8 @@
 #!/bin/bash
-# Устанавливает демон zapretifyd и движок utunws (этап 2 порта, проверка из Терминала).
-# Использование: sudo bash install-daemon.sh <zapretifyd> <utunws>
-# Владельцем (кто может управлять демоном) становится пользователь, запустивший sudo.
+# Устанавливает или обновляет службу Zapretify (zapretifyd) и движок utunws.
+# Использование: sudo bash install-daemon.sh <zapretifyd> <utunws> [uid владельца] [путь к Zapretify.app]
+# Владелец — кто может управлять службой: uid из аргумента (так вызывает приложение) или запустивший sudo.
+# По пути к приложению служба замечает, что Zapretify.app удалили, и удаляет себя.
 set -euo pipefail
 
 ROOT="/Library/Application Support/Zapretify"
@@ -12,15 +13,18 @@ LOGDIR=/Library/Logs/Zapretify
 [[ $EUID -eq 0 ]] || { echo "Запустите через sudo"; exit 1; }
 DAEMON=${1:?укажите путь к zapretifyd}
 ENGINE=${2:?укажите путь к utunws}
-OWNER_UID=${SUDO_UID:?запустите через sudo от своего пользователя}
-[[ $OWNER_UID -gt 0 ]] || { echo "Владелец не может быть root"; exit 1; }
+OWNER_UID=${3:-${SUDO_UID:-}}
+APP_PATH=${4:-}
+[[ $OWNER_UID =~ ^[0-9]+$ && $OWNER_UID -gt 0 ]] || { echo "Укажите владельца: запустите через sudo от своего пользователя"; exit 1; }
+[[ -z $APP_PATH || ( $APP_PATH == /*.app && -d $APP_PATH && $APP_PATH != *[\"\\]* ) ]] || { echo "Неверный путь к приложению: $APP_PATH"; exit 1; }
 
 launchctl bootout "system/$LABEL" 2>/dev/null || true
 
 install -d -o root -g wheel -m 0755 "$ROOT" "$ROOT/engine" "$LOGDIR"
 install -o root -g wheel -m 0755 "$DAEMON" "$ROOT/zapretifyd"
 install -o root -g wheel -m 0755 "$ENGINE" "$ROOT/engine/utunws"
-printf '{"owner_uid": %d}\n' "$OWNER_UID" > "$ROOT/daemon.json"
+# Без python: на чистой macOS /usr/bin/python3 только предлагает установить инструменты разработчика.
+printf '{"owner_uid": %d, "app_path": "%s"}\n' "$OWNER_UID" "$APP_PATH" > "$ROOT/daemon.json"
 chown root:wheel "$ROOT/daemon.json"
 chmod 0644 "$ROOT/daemon.json"
 

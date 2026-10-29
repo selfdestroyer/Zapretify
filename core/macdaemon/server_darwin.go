@@ -31,6 +31,7 @@ type Server struct {
 	udpPorts []string
 	lastExit string
 	note     string // warning about the current state (a VPN carries part of the traffic)
+	state    bootState
 	log      *ringLog
 }
 
@@ -65,8 +66,18 @@ func Listen(path string) (net.Listener, error) {
 	return l, nil
 }
 
-// Startup clears what a previous, crashed daemon left behind.
-func (s *Server) Startup() { cleanupStale(s.RootDir) }
+// Startup clears what a previous, crashed daemon left behind and, if the user asked for it,
+// starts the engine with the last strategy (the bypass works right after the Mac boots).
+func (s *Server) Startup() {
+	if s.log == nil {
+		s.log = &ringLog{}
+	}
+	cleanupStale(s.RootDir)
+	s.state = loadBootState(s.RootDir)
+	if s.state.Boot && s.state.Strategy != "" {
+		go s.bootStart()
+	}
+}
 
 // Shutdown stops the engine and removes its pf rules.
 func (s *Server) Shutdown() {
@@ -117,10 +128,21 @@ func (s *Server) handle(conn net.Conn) {
 			s.logf("запуск стратегии %q", req.Strategy)
 			if err = s.startEngine(req.Strategy, home, dataUID); err != nil {
 				s.logf("ошибка запуска: %v", err)
+			} else if s.state.Strategy != req.Strategy {
+				s.state.Strategy = req.Strategy
+				s.saveState()
 			}
 		}
 	case CmdStop:
 		s.stopEngine()
+	case CmdBoot:
+		if req.Boot != nil {
+			s.state.Boot = *req.Boot
+		}
+		if req.Strategy != "" {
+			s.state.Strategy = req.Strategy
+		}
+		s.saveState()
 	default:
 		err = fmt.Errorf("неизвестная команда %q", req.Cmd)
 	}
@@ -137,6 +159,7 @@ func (s *Server) fillStatus(r *Response) {
 	}
 	r.LastExit = s.lastExit
 	r.Note = s.note
+	r.Boot = s.state.Boot
 	r.Log = s.log.tail(maxLogLines)
 }
 

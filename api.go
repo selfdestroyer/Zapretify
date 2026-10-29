@@ -151,6 +151,7 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			"benchmark": app.GetBenchmarkActivity(),
 			"platform":  runtime.GOOS,
 			"vpn":       activeVPN(),
+			"service":   macServiceState(),
 		}
 		writeJSON(w, status)
 	})
@@ -516,6 +517,39 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		writeJSON(w, map[string]int{"killed": app.KillForeignWinws()})
+	})
+
+	mux.HandleFunc("/api/zapret/boot", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
+		if err := setBootStart(app, r.URL.Query().Get("enabled") == "1"); err != nil {
+			serverError(w, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "ok"})
+	})
+
+	mux.HandleFunc("/api/platform/install-service", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
+		if err := installService(app); err != nil {
+			serverError(w, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "ok"})
+	})
+
+	mux.HandleFunc("/api/platform/uninstall-service", func(w http.ResponseWriter, r *http.Request) {
+		if !requirePost(w, r) {
+			return
+		}
+		if err := uninstallService(app); err != nil {
+			serverError(w, err.Error())
+			return
+		}
+		writeJSON(w, map[string]string{"status": "ok"})
 	})
 
 	mux.HandleFunc("/api/platform/network-settings", func(w http.ResponseWriter, r *http.Request) {

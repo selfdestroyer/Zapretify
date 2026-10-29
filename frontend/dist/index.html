@@ -782,6 +782,7 @@ select.inp option{background:var(--card)}
         <h3>Аварийные действия</h3>
         <div class="em first"><div class="et"><b>Завершить Zapret</b><span data-mac="Остановить движок обхода в службе Zapretify">Принудительно закрыть все winws.exe</span></div><button class="btn btn-ghost btn-sm" data-em="kill">Завершить</button></div>
         <div class="em" data-win><div class="et"><b>Сброс служб и WinDivert</b><span>Если порт занят или драйвер завис</span></div><button class="btn btn-ghost btn-sm" data-em="reset">Сбросить</button></div>
+        <div class="em" data-mac-only hidden><div class="et"><b>Удалить службу Zapretify</b><span>Выключает обход и удаляет службу. После этого приложение можно убрать в Корзину</span></div><button class="btn btn-ghost btn-sm" data-em="uninstall">Удалить</button></div>
         <div class="em"><div class="et"><b>Закрыть всё</b><span>Приложение, Zapret и Telegram-прокси</span></div><button class="btn btn-danger btn-sm" data-em="exit">Закрыть</button></div>
       </div>
     </div>
@@ -945,6 +946,10 @@ let tgLink = '';
 let svcState = '';         // RUNNING | STOPPED | NOT_INSTALLED
 let PLATFORM = '';         // windows | darwin
 let VPNS = [];             // активные VPN/TUN-адаптеры: «Имя (описание)»
+let SVC = null;            // macOS: служба Zapretify {installed, ok, outdated, version}; на Windows null
+let svcBusy = false;
+// macOS: без службы (или со службой от другой версии приложения) обход не запустится.
+const needSvc = () => MAC() && SVC && (!SVC.ok || SVC.outdated);
 // На Windows остаются тексты про службы Windows, winws.exe, WinDivert и UAC; на macOS — свои.
 const MAC = () => PLATFORM === 'darwin';
 const pf = (win, mac) => MAC() ? mac : win;
@@ -952,6 +957,7 @@ function applyPlatform() {
   document.documentElement.classList.toggle('mac', MAC());
   if (!MAC()) return;
   document.querySelectorAll('[data-win]').forEach(el => el.hidden = true);
+  document.querySelectorAll('[data-mac-only]').forEach(el => el.hidden = false);
   // Текст заменяется в последнем текстовом узле, чтобы не потерять иконку внутри элемента.
   document.querySelectorAll('[data-mac]').forEach(el => {
     const t = [...el.childNodes].reverse().find(n => n.nodeType === 3 && n.textContent.trim());
@@ -979,11 +985,21 @@ function render() {
     partial: ['Часть служб включена', S.z === 'on' ? 'Работает только Zapret — Telegram-прокси выключен' : 'Работает только Telegram-прокси — Zapret выключен'],
     off: ['Все службы выключены', 'Запустите обход блокировок и прокси в один клик'],
     pending: ['Применяю изменения…', 'Это займёт пару секунд'] }[hs];
+  if (needSvc() && !searching) {
+    setAttr($('#hero'), 'data-state', svcBusy ? 'pending' : 'partial');
+    copy[0] = svcBusy ? 'Устанавливаю службу…' : SVC.outdated ? 'Обновите службу Zapretify' : SVC.installed ? 'Служба Zapretify не отвечает' : 'Нужна служба Zapretify';
+    copy[1] = svcBusy ? 'Подтвердите установку паролем администратора' : SVC.outdated ? 'Она от другой версии приложения (' + (SVC.version || '?') + '). Обновление займёт пару секунд'
+      : 'Она включает обход блокировок. macOS один раз спросит пароль администратора';
+  }
   setText($('#hero-title'), copy[0]); setText($('#hero-desc'), copy[1]);
   const mb = $('#btn-master'), anyOn = S.z === 'on' || S.t === 'on';
   mb.classList.toggle('btn-danger', anyOn && !pend && !searching); mb.classList.toggle('btn-primary', !anyOn || pend || searching);
   mb.classList.toggle('is-pending', pend && !searching); mb.disabled = searching;
   setText($('#master-lbl'), searching ? (BENCH.mode === 'one' ? 'Проверка…' : 'Подбор…') : pend ? 'Применяю…' : anyOn ? 'Остановить всё' : 'Включить всё');
+  if (needSvc() && !searching) {
+    setText($('#master-lbl'), svcBusy ? 'Установка…' : SVC.outdated ? 'Обновить службу' : SVC.installed ? 'Переустановить' : 'Установить службу');
+    mb.classList.remove('btn-danger'); mb.classList.add('btn-primary'); mb.classList.toggle('is-pending', svcBusy);
+  }
   for (const k of ['z', 't']) {
     const st = S[k], card = $('#card-' + k), sw = $('#sw-' + k), sub = $('.sub', card), em = $('em', sub);
     setAttr(card, 'data-state', st === 'pending' ? 'on' : st);
@@ -1003,7 +1019,7 @@ async function pollStatus() {
   try { d = await api('/api/status'); } catch (e) { return; }
   VERSION = d.version || VERSION; tgLink = d.tg_link || ''; svcState = d.zapret.service_state || '';
   if (d.platform && d.platform !== PLATFORM) { PLATFORM = d.platform; applyPlatform(); }
-  VPNS = d.vpn || []; $('#vpn-badge').hidden = !VPNS.length;
+  VPNS = d.vpn || []; $('#vpn-badge').hidden = !VPNS.length; SVC = d.service || null;
   const b = d.benchmark || {};
   BENCH.running = !!b.running; BENCH.mode = b.mode || ''; BENCH.tested = b.tested || 0; BENCH.total = b.total || 0;
   if (S.z !== 'pending') S.z = BENCH.running ? 'search' : d.zapret.is_running ? 'on' : 'off';
@@ -1024,8 +1040,16 @@ async function apply(k, target) {
   catch (e) { toast(NAMES[k] + ': ' + e.message, 'err'); return false; }
   finally { S[k] = target; await pollStatus(); }
 }
+// Установка или обновление службы Zapretify (macOS): пароль спрашивает сама macOS.
+async function installSvc() {
+  if (svcBusy) return; svcBusy = true; render();
+  try { await post('/api/platform/install-service'); toast('Служба Zapretify установлена', 'ok'); }
+  catch (e) { toast(e.message === 'установка отменена' ? 'Установка службы отменена' : 'Служба: ' + e.message, e.message === 'установка отменена' ? 'info' : 'err'); }
+  finally { svcBusy = false; await pollStatus(); }
+}
 async function toggle(k) {
   if (S[k] === 'search') { openSearch(); return; }
+  if (k === 'z' && needSvc() && S.z !== 'on') { installSvc(); return; }
   const target = S[k] === 'on' ? 'off' : 'on';
   if (await apply(k, target)) {
     if (k === 'z' && target === 'on' && VPNS.length) vpnToast(NAMES[k] + ' запущен');
@@ -1035,6 +1059,7 @@ async function toggle(k) {
 // Обход и VPN могут работать вместе, но так делать не стоит: предупреждаем при каждом запуске Zapret.
 function vpnToast(what) { toast(what + '. Включён VPN — работать вместе можно, но лучше его выключить', 'info', () => openHelp('vpn', { vpn_adapters: VPNS }), 'Подробнее'); }
 async function master() {
+  if (needSvc() && S.z !== 'search') { installSvc(); return; }
   const turnOff = S.z === 'on' || S.t === 'on', target = turnOff ? 'off' : 'on';
   const res = await Promise.all(['z', 't'].filter(k => S[k] !== target).map(k => apply(k, target)));
   if (res.length && res.every(Boolean)) {
@@ -1379,7 +1404,7 @@ const portsOk = s => /^\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*$/.test(s) && s.s
 const SECRET_RE = /^[0-9a-f]{32}$/i;
 const svcInstalled = () => svcState === 'RUNNING' || svcState === 'STOPPED';
 const CFG = {
-  z: () => ({ strategy: appConfig.zapret.strategy, service: !!(appConfig.zapret.autostart_service || appConfig.zapret.service_mode) || svcInstalled(),
+  z: () => ({ strategy: appConfig.zapret.strategy, boot: !!appConfig.zapret.boot_start, service: !!(appConfig.zapret.autostart_service || appConfig.zapret.service_mode) || svcInstalled(),
     game: appConfig.zapret.game_filter_mode || 'disabled', tcp: appConfig.zapret.game_filter_tcp || '1024-65535', udp: appConfig.zapret.game_filter_udp || '1024-65535', ipset: appConfig.zapret.ipset_mode || 'none' }),
   t: () => ({ port: String(appConfig.tg_proxy.port || 1443), secret: appConfig.tg_proxy.secret || '', autostart: !!appConfig.tg_proxy.autostart }),
   a: () => ({ autostart_app: !!appConfig.app.autostart_app, start_minimized: !!appConfig.app.start_minimized, auto_update_assets: !!appConfig.app.auto_update_assets }),
@@ -1394,6 +1419,7 @@ const SCHEMA = {
     validate: v => { const o = {}; if (v.game !== 'disabled') { if (!portsOk(v.tcp)) o.tcp = 'TCP: формат 1024-65535 или 80,443'; if (!portsOk(v.udp)) o.udp = 'UDP: формат 1024-65535 или 80,443'; } return o; },
     fields: [
       { k: 'strategy', type: 'select', label: 'Стратегия обхода', hint: 'auto', opts: () => STRATS.map(s => [s.id, s.name]) },
+      { k: 'boot', onlyMac: 1, type: 'switch', label: 'Включать обход при загрузке Mac', hint: 'Служба Zapretify запустит Zapret с выбранной стратегией сразу после включения компьютера, даже без открытого приложения' },
       { k: 'service', win: 1, type: 'switch', label: 'Запускать как службу Windows', hint: 'Обход работает с включения ПК, даже без открытого приложения' },
       { k: 'game', adv: 1, win: 1, type: 'select', label: 'Game Filter', hint: 'Discord Voice и онлайн-игры', opts: () => [['disabled', 'Отключен (по умолчанию)'], ['udp', 'Только UDP [Рекомендуется]'], ['tcp', 'Только TCP'], ['all', 'Полный (TCP и UDP)']] },
       { type: 'ports', adv: 1, win: 1, label: 'Диапазоны портов игры', hint: 'TCP и UDP (Voice). Например: 1024-65535' },
@@ -1460,7 +1486,7 @@ function buildDlg() {
   const sc = SCHEMA[D.k]; $('#dlg-title').textContent = sc.title;
   const ch = $('#dlg-chip'), tn = sc.tone === 'teal' ? ['--teal', '--teal-soft', '--teal-line'] : ['--indigo', '--indigo-soft', '--indigo-line'];
   ch.style.cssText = '--c:var(' + tn[0] + ');--c-soft:var(' + tn[1] + ');--c-line:var(' + tn[2] + ')'; $('use', ch).setAttribute('href', '#' + sc.icon);
-  const fields = sc.fields.filter(f => !(f.win && MAC())).map(f => MAC() && f.mac ? Object.assign({}, f, f.mac) : f);
+  const fields = sc.fields.filter(f => !(f.win && MAC()) && !(f.onlyMac && !MAC())).map(f => MAC() && f.mac ? Object.assign({}, f, f.mac) : f);
   const main = fields.filter(f => !f.adv).map(rowHTML).join(''), adv = fields.filter(f => f.adv).map(rowHTML).join('');
   const db = $('#dlg-body'); db.classList.remove('onadv'); db.classList.toggle('has-adv', !!adv); setText($('#dlg-sub'), dlgSub());
   db.innerHTML = '<div class="pane main">' + main + (adv ? '<button class="navrow" id="adv-go">' + ico(sc.advIcon || 'i-gear') + '<span class="grow">' + (sc.advLabel || 'Дополнительно') + '</span>' + ico('i-chev', 'g-chev') + '</button>' : '') + '</div>'
@@ -1521,6 +1547,11 @@ const SAVE = {
     const filtersChanged = old.game !== v.game || old.tcp !== v.tcp || old.udp !== v.udp;
     const changed = old.strategy !== v.strategy || filtersChanged || old.ipset !== v.ipset;
     if (old.ipset !== v.ipset) await post('/api/zapret/ipset-mode?mode=' + encodeURIComponent(v.ipset));
+    if (MAC() && (old.boot !== v.boot || (v.boot && old.strategy !== v.strategy))) {
+      await post('/api/zapret/boot?enabled=' + (v.boot ? 1 : 0));
+      await saveConfig(c => { c.zapret.boot_start = v.boot; });
+      if (old.boot !== v.boot && !changed) return v.boot ? 'Обход будет включаться при загрузке Mac' : 'Обход при загрузке Mac выключен';
+    }
     await saveConfig(c => { Object.assign(c.zapret, { strategy: v.strategy, game_filter_mode: v.game, game_filter_tcp: v.tcp, game_filter_udp: v.udp, ipset_mode: v.ipset, autostart_service: v.service, service_mode: v.service }); });
     if (old.service !== v.service) {
       if (v.service) {
@@ -1807,7 +1838,8 @@ const HELP = {
   svc: d => ({ tone: 'bad', title: 'Служба Zapretify не отвечает', sub: 'Без неё обход блокировок не запустится',
     body: '<h4>Что происходит</h4><p>Приложение не может связаться со службой Zapretify (zapretifyd). Она работает от имени администратора и запускает движок обхода.</p>' +
       '<div class="kv"><div>' + esc(d.engine_service || '') + '</div></div>' +
-      '<h4>Как исправить</h4><ol><li>Если служба ещё не установлена — установите её (понадобится пароль Mac).</li><li>Если установлена — перезагрузите Mac: служба запускается вместе с системой.</li><li>Обновите диагностику, чтобы проверить ещё раз.</li></ol>' }),
+      '<h4>Как исправить</h4><ol><li>Нажмите <b>«Установить службу»</b> ниже и введите пароль Mac. Если служба уже была установлена, она переустановится.</li><li>Обновите диагностику, чтобы проверить ещё раз.</li></ol>',
+    act: ['Установить службу', async () => { await installSvc(); loadDiag(); }] }),
   winws: d => {
     const p = d.foreign_winws || [], n = p.length;
     if (MAC()) return { tone: 'bad', title: 'Запущен другой обходчик', sub: 'Два движка не могут работать одновременно',
@@ -1892,6 +1924,7 @@ async function emergency(k, btn) {
   try {
     if (k === 'exit') { $('#closed').classList.add('show'); await post('/api/app/force-exit').catch(() => {}); setTimeout(() => { try { window.close(); } catch (_) {} }, 400); return; }
     if (k === 'kill') { await post('/api/zapret/force-kill'); toast('Zapret принудительно остановлен', 'ok'); }
+    else if (k === 'uninstall') { await post('/api/platform/uninstall-service'); toast('Служба Zapretify удалена', 'ok'); loadDiag(); }
     else { await post('/api/zapret/reset-drivers'); toast('Сброс служб и WinDivert выполнен', 'ok'); loadDiag(); }
   } catch (err) { toast(err.message, 'err'); }
   finally { btn.classList.remove('is-pending'); btn.innerHTML = lbl; pollStatus(); }

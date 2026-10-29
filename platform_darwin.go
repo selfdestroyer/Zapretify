@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"zapretify/core/config"
 	"zapretify/core/logger"
 	"zapretify/core/macdaemon"
 	"zapretify/core/platform"
@@ -98,4 +101,136 @@ func addPlatformDiagnostics(r *platform.DiagnosticReport) {
 		r.ForeignWinws = append(r.ForeignWinws, platform.ForeignProcess{PID: pid, Path: path})
 		r.OverallStatus = "ERROR"
 	}
+}
+
+// serviceState describes the root service for the UI: the app cannot bypass anything without it.
+type serviceState struct {
+	Installed bool   `json:"installed"`
+	OK        bool   `json:"ok"`       // answers on the socket
+	Outdated  bool   `json:"outdated"` // built from another app version: reinstall from this app
+	Version   string `json:"version,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+
+const daemonPlist = "/Library/LaunchDaemons/" + macdaemon.Label + ".plist"
+
+var svcCache struct {
+	sync.Mutex
+	at    time.Time
+	state *serviceState
+}
+
+// macServiceState is polled with /api/status, so the answer is cached for two seconds.
+func macServiceState() any {
+	svcCache.Lock()
+	defer svcCache.Unlock()
+	if svcCache.state != nil && time.Since(svcCache.at) < 2*time.Second {
+		return svcCache.state
+	}
+	st := &serviceState{}
+	_, err := os.Stat(daemonPlist)
+	st.Installed = err == nil
+	if resp, err := macdaemon.Call(macdaemon.Request{Cmd: macdaemon.CmdStatus}, 2*time.Second); err == nil {
+		st.Installed, st.OK, st.Version = true, true, resp.Version
+		st.Outdated = resp.Version != config.Version
+	} else {
+		st.Error = err.Error()
+	}
+	svcCache.state, svcCache.at = st, time.Now()
+	return st
+}
+
+// daemonResources is Contents/Resources/daemon of this Zapretify.app and the app itself.
+func daemonResources() (dir, app string, err error) {
+	src := bundledBasesDir()
+	if src == "" || !strings.HasSuffix(filepath.Dir(filepath.Dir(src)), ".app") {
+		return "", "", fmt.Errorf("управлять службой можно только из Zapretify.app")
+	}
+	return filepath.Join(src, "daemon"), filepath.Dir(filepath.Dir(src)), nil
+}
+
+// runAsAdmin runs a script from the app with root rights; macOS asks for an administrator password.
+func runAsAdmin(prompt, script string, args ...string) error {
+	q := func(s string) string {
+		return `quoted form of "` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(s) + `"`
+	}
+	cmd := `"/bin/bash " & ` + q(script)
+	for _, a := range args {
+		cmd += ` & " " & ` + q(a)
+	}
+	as := `do shell script ` + cmd + ` with administrator privileges with prompt "` + prompt + `"`
+	out, err := exec.Command("/usr/bin/osascript", "-e", as).CombinedOutput()
+	svcCache.Lock()
+	svcCache.state = nil
+	svcCache.Unlock()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if strings.Contains(msg, "-128") {
+			return fmt.Errorf("установка отменена")
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
+}
+
+// installService installs or updates the root service from Contents/Resources/daemon of this
+// Zapretify.app. macOS asks for an administrator password in its own dialog.
+func installService(a *App) error {
+	dir, app, err := daemonResources()
+	if err != nil {
+		return err
+	}
+	for _, f := range []string{"install-daemon.sh", "zapretifyd", "utunws"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			return fmt.Errorf("в Zapretify.app нет %s", f)
+		}
+	}
+	wasRunning := a.IsZapretRunning()
+	logger.Log("[Zapretify] Установка службы Zapretify...")
+	if err := runAsAdmin("Zapretify устанавливает службу, которая включает обход блокировок.",
+		filepath.Join(dir, "install-daemon.sh"), filepath.Join(dir, "zapretifyd"), filepath.Join(dir, "utunws"),
+		strconv.Itoa(os.Getuid()), app); err != nil {
+		logger.Log("[Zapretify] Служба не установлена: %v", err)
+		return err
+	}
+	logger.Log("[Zapretify] Служба Zapretify установлена.")
+	// Reinstalling restarts the service and with it the engine: bring the bypass back.
+	if wasRunning {
+		time.Sleep(time.Second)
+		if err := a.StartZapret(""); err != nil {
+			logger.Log("[Zapret] После обновления службы Zapret не запустился: %v", err)
+		}
+	}
+	return nil
+}
+
+// uninstallService removes the root service (the bypass stops, pf rules go away) and the login item.
+func uninstallService(a *App) error {
+	dir, _, err := daemonResources()
+	if err != nil {
+		return err
+	}
+	logger.Log("[Zapretify] Удаление службы Zapretify...")
+	if err := runAsAdmin("Zapretify удаляет службу обхода блокировок.", filepath.Join(dir, "uninstall-daemon.sh")); err != nil {
+		if err.Error() == "установка отменена" {
+			return fmt.Errorf("удаление отменено")
+		}
+		return err
+	}
+	_ = config.SetAppAutostart(false)
+	_ = a.cfg.Update(func(c *config.Config) {
+		c.App.AutostartApp = false
+		c.Zapret.BootStart = false
+	})
+	logger.Log("[Zapretify] Служба Zapretify удалена.")
+	return nil
+}
+
+// setBootStart switches «Включать обход при загрузке Mac» in the root service.
+func setBootStart(a *App, enabled bool) error {
+	if err := (macdaemon.DaemonEngine{}).SetBoot(enabled, a.cfg.Clone().Zapret.Strategy); err != nil {
+		return err
+	}
+	logger.Log("[Zapret] Запуск обхода при загрузке Mac: %v", enabled)
+	return nil
 }

@@ -13,9 +13,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"os/exec"
 	"os/signal"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -43,8 +47,12 @@ func client(args []string) {
 
 // daemonConfig is written by the installer next to the daemon.
 type daemonConfig struct {
-	OwnerUID int `json:"owner_uid"`
+	OwnerUID int    `json:"owner_uid"`
+	AppPath  string `json:"app_path"` // Zapretify.app that installed the daemon; empty for Terminal installs
 }
+
+// appGoneAfter: the app may disappear for a moment while it is being replaced by a newer version.
+const appGoneAfter = 10 * time.Minute
 
 func main() {
 	log.SetFlags(log.LstdFlags)
@@ -78,6 +86,7 @@ func main() {
 	}()
 
 	log.Printf("версия %s, владелец uid %d", config.Version, cfg.OwnerUID)
+	go watchApp(cfg, s, l)
 	if err := s.Serve(l); err != nil {
 		log.Fatal(err)
 	}
@@ -107,4 +116,43 @@ func readConfig(path string) (daemonConfig, error) {
 		return daemonConfig{}, fmt.Errorf("%s: не указан owner_uid", path)
 	}
 	return cfg, nil
+}
+
+// watchApp removes the daemon when Zapretify.app is gone (moved to the Trash): deleting the app
+// is all a user needs to uninstall Zapretify. The user's settings and lists stay in their home.
+func watchApp(cfg daemonConfig, s *macdaemon.Server, l net.Listener) {
+	if cfg.AppPath == "" {
+		return
+	}
+	var gone time.Time
+	for range time.Tick(time.Minute) {
+		// Only "does not exist" counts: privacy protection (TCC) may deny root access to
+		// ~/Downloads or ~/Desktop, which must not uninstall anything.
+		if _, err := os.Stat(cfg.AppPath); !os.IsNotExist(err) {
+			gone = time.Time{}
+			continue
+		}
+		if gone.IsZero() {
+			gone = time.Now()
+			log.Printf("%s не найден; если не появится за %s, служба удалит себя", cfg.AppPath, appGoneAfter)
+			continue
+		}
+		if time.Since(gone) < appGoneAfter {
+			continue
+		}
+		log.Print("Zapretify.app удалён — служба удаляет себя")
+		s.Shutdown()
+		l.Close()
+		if u, err := user.LookupId(strconv.Itoa(cfg.OwnerUID)); err == nil {
+			macdaemon.RemoveUserLaunchAgent(u.HomeDir)
+		}
+		_ = os.Remove("/Library/LaunchDaemons/" + macdaemon.Label + ".plist")
+		_ = os.Remove(macdaemon.SocketPath)
+		_ = os.Remove("/var/run/zapretify.conf")
+		_ = os.RemoveAll(macdaemon.RootDir)
+		_ = os.RemoveAll("/Library/Logs/Zapretify")
+		// bootout stops this process; launchd does not start it again, the plist is gone.
+		_ = exec.Command("/bin/launchctl", "bootout", "system/"+macdaemon.Label).Run()
+		os.Exit(0)
+	}
 }

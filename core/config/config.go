@@ -102,6 +102,7 @@ type ZapretConfig struct {
 	GameFilterUDP    string `json:"game_filter_udp"`  // e.g. "1024-65535"
 	IPSetMode        string `json:"ipset_mode"`       // "loaded", "none", "any"
 	AutostartService bool   `json:"autostart_service"`
+	BootStart        bool   `json:"boot_start"` // macOS: the root service starts the bypass when the Mac boots
 	ServiceMode      bool   `json:"service_mode"`
 
 	// Legacy compatibility flags

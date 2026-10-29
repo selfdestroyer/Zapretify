@@ -40,6 +40,12 @@ func (DaemonEngine) Start(strategyID, _, _, gameFilterMode, _, _ string) error {
 	return nil
 }
 
+// SetBoot tells the service whether to start the bypass when the Mac boots, with strategyID.
+func (DaemonEngine) SetBoot(enabled bool, strategyID string) error {
+	_, err := Call(Request{Cmd: CmdBoot, Boot: &enabled, Strategy: strategyID}, statusTimeout)
+	return err
+}
+
 func (DaemonEngine) Stop() error {
 	_, err := Call(Request{Cmd: CmdStop}, startTimeout)
 	if err == nil {

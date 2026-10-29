@@ -32,11 +32,13 @@ const (
 	CmdStatus = "status" // current state
 	CmdStart  = "start"  // import bases from the user's data dir and (re)start the engine with Strategy
 	CmdStop   = "stop"   // stop the engine and remove pf rules
+	CmdBoot   = "boot"   // Boot: start the engine at system boot (with Strategy, or the last started one)
 )
 
 type Request struct {
 	Cmd      string `json:"cmd"`
-	Strategy string `json:"strategy,omitempty"` // strategy ID from strategies.json, for CmdStart
+	Strategy string `json:"strategy,omitempty"` // strategy ID from strategies.json, for CmdStart / CmdBoot
+	Boot     *bool  `json:"boot,omitempty"`     // for CmdBoot
 }
 
 type Response struct {
@@ -50,6 +52,7 @@ type Response struct {
 	Iface    string   `json:"iface,omitempty"`
 	LastExit string   `json:"last_exit,omitempty"` // why the engine stopped on its own, if it did
 	Note     string   `json:"note,omitempty"`      // warning about the running engine (VPN active, …)
+	Boot     bool     `json:"boot"`                // the engine starts at system boot
 	Log      []string `json:"log,omitempty"`       // last engine output lines
 }
 
