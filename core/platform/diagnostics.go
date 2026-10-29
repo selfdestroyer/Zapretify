@@ -92,12 +92,12 @@ func RunDiagnostics(binDir string) DiagnosticReport {
 			report.ForeignWinws = foreign
 			report.OverallStatus = "ERROR"
 		}
+	}
 
-		// Traffic routed into a VPN tunnel is encrypted before WinDivert sees it, so the bypass has no effect.
-		if vpn := ActiveVPNAdapters(); len(vpn) > 0 {
-			report.VPNAdapters = vpn
-			report.warn()
-		}
+	// Traffic routed into a VPN tunnel is encrypted before Zapret sees it, so the bypass has no effect on it.
+	if vpn := ActiveVPNAdapters(); len(vpn) > 0 {
+		report.VPNAdapters = vpn
+		report.warn()
 	}
 
 	report.DNS = <-dnsDone

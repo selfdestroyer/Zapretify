@@ -76,6 +76,8 @@ button,input,select{font-family:inherit;color:inherit}
 .top b{font-size:15px;font-weight:700;letter-spacing:-.2px}
 .ver{font:600 10px var(--mono);color:var(--muted);background:var(--raised);padding:2px 7px;border-radius:6px;border:0;cursor:pointer;transition:color .2s,background .2s}
 .ver:hover{color:var(--text);background:var(--raised-2)}
+.vpnb{display:inline-flex;align-items:center;gap:3px;font:600 10px var(--mono);color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line);padding:1px 7px 1px 4px;border-radius:6px;cursor:pointer;transition:filter .2s}
+.vpnb:hover{filter:brightness(1.25)}.vpnb .ico{width:12px;height:12px}.vpnb[hidden]{display:none}
 .body{flex:1;padding:2px 20px 20px;display:flex;flex-direction:column;gap:12px;min-height:0}
 .body>*{animation:rise .46s var(--ease) both;animation-delay:calc(var(--i,0)*60ms)}
 
@@ -394,7 +396,7 @@ button,input,select{font-family:inherit;color:inherit}
 .ubk b{color:var(--text-2);font-weight:600}
 .hlp-b{flex:0 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px 10px;font-size:12.5px;line-height:1.5;color:var(--text-2)}
 .hlp-b h4{font-size:12px;font-weight:700;color:var(--text);margin:10px 0 3px}
-.hlp-b ol{margin:0;padding-left:18px}.hlp-b li{margin:2px 0}
+.hlp-b ol,.hlp-b ul{margin:0;padding-left:18px}.hlp-b li{margin:2px 0}
 .hlp-b b{color:var(--text);font-weight:600}
 .hlp-b .kv{margin-top:6px;border:1px solid var(--border);border-radius:10px;background:var(--raised);padding:6px 10px;font:11.5px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace;color:var(--text-2);overflow-wrap:anywhere}
 .hlp-b .kv div+div{margin-top:3px}
@@ -604,6 +606,7 @@ select.inp option{background:var(--card)}
       <img class="logo" src="/logo.png" alt="Zapretify">
       <b>Zapretify</b>
       <button class="ver" id="btn-version-badge" title="Проверить обновления">v1.4.0</button>
+      <button class="vpnb" id="vpn-badge" hidden title="Включён VPN: работать вместе можно, но не желательно"><svg class="ico"><use href="#i-bang"/></svg>VPN</button>
       <span style="flex:1"></span>
       <button class="ib" id="top-log" title="Журнал событий" aria-label="Журнал событий"><svg class="ico"><use href="#i-file"/></svg><i class="lgdot" id="lgdot" hidden></i></button>
     </header>
@@ -936,6 +939,8 @@ let LAST = null;           // последний подбор (/api/zapret/bench
 let VERSION = '';
 let tgLink = '';
 let svcState = '';         // RUNNING | STOPPED | NOT_INSTALLED
+let PLATFORM = '';         // windows | darwin
+let VPNS = [];             // активные VPN/TUN-адаптеры: «Имя (описание)»
 const TARGETS = { all: [], yt_discord: [], blockcheck: [] };
 const CATKEY = { youtube: 'yt', discord: 'dc', blockcheck: 'bc', baseline: 'bl' };
 
@@ -980,6 +985,7 @@ async function pollStatus() {
   let d;
   try { d = await api('/api/status'); } catch (e) { return; }
   VERSION = d.version || VERSION; tgLink = d.tg_link || ''; svcState = d.zapret.service_state || '';
+  PLATFORM = d.platform || PLATFORM; VPNS = d.vpn || []; $('#vpn-badge').hidden = !VPNS.length;
   const b = d.benchmark || {};
   BENCH.running = !!b.running; BENCH.mode = b.mode || ''; BENCH.tested = b.tested || 0; BENCH.total = b.total || 0;
   if (S.z !== 'pending') S.z = BENCH.running ? 'search' : d.zapret.is_running ? 'on' : 'off';
@@ -1003,12 +1009,20 @@ async function apply(k, target) {
 async function toggle(k) {
   if (S[k] === 'search') { openSearch(); return; }
   const target = S[k] === 'on' ? 'off' : 'on';
-  if (await apply(k, target)) toast(NAMES[k] + (target === 'on' ? ' запущен' : ' остановлен'), 'ok');
+  if (await apply(k, target)) {
+    if (k === 'z' && target === 'on' && VPNS.length) vpnToast(NAMES[k] + ' запущен');
+    else toast(NAMES[k] + (target === 'on' ? ' запущен' : ' остановлен'), 'ok');
+  }
 }
+// Обход и VPN могут работать вместе, но так делать не стоит: предупреждаем при каждом запуске Zapret.
+function vpnToast(what) { toast(what + '. Включён VPN — работать вместе можно, но лучше его выключить', 'info', () => openHelp('vpn', { vpn_adapters: VPNS }), 'Подробнее'); }
 async function master() {
   const turnOff = S.z === 'on' || S.t === 'on', target = turnOff ? 'off' : 'on';
   const res = await Promise.all(['z', 't'].filter(k => S[k] !== target).map(k => apply(k, target)));
-  if (res.length && res.every(Boolean)) toast(turnOff ? 'Все службы остановлены' : 'Все службы запущены', 'ok');
+  if (res.length && res.every(Boolean)) {
+    if (!turnOff && S.z === 'on' && VPNS.length) vpnToast('Все службы запущены');
+    else toast(turnOff ? 'Все службы остановлены' : 'Все службы запущены', 'ok');
+  }
 }
 
 /* toast */
@@ -1019,6 +1033,7 @@ function toast(msg, kind = 'info', action, label) {
   t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), action ? 5500 : kind === 'err' ? 4500 : 2600);
 }
 $('#toast-undo').onclick = () => { if (undoFn) undoFn(); $('#toast').classList.remove('show'); };
+$('#vpn-badge').onclick = () => openHelp('vpn', { vpn_adapters: VPNS });
 
 /* ================= подбор и проверка стратегий ================= */
 const C = 364.4;
@@ -1754,11 +1769,18 @@ const HELP = {
       act: ['Завершить процессы', async () => { const r = await post('/api/platform/kill-foreign-winws'); toast(r.killed ? 'Завершено процессов: ' + r.killed : 'Не удалось завершить — нужны права администратора', r.killed ? 'ok' : 'err'); }] };
   },
   vpn: d => {
-    const a = d.vpn_adapters || [];
-    return { tone: 'warn', title: 'Активен VPN или TUN-адаптер', sub: 'Трафик может идти в обход Zapret',
-      body: '<h4>Что происходит</h4><p>В системе подключены сетевые адаптеры VPN или прокси-клиента в режиме TUN:</p><div class="kv">' + a.map(x => '<div>' + esc(x) + '</div>').join('') + '</div>' +
-        '<h4>Почему это мешает</h4><p>Трафик, который уходит в VPN-туннель, шифруется раньше, чем его видит Zapret, — стратегии на него не действуют. Некоторые TUN-клиенты (sing-box, Clash, Hiddify) к тому же конфликтуют с драйвером WinDivert.</p>' +
-        '<h4>Как исправить</h4><ol><li>Если сайты открываются — ничего делать не нужно: VPN может работать только для отдельных приложений.</li><li>Если не открываются — отключите VPN или выключите в клиенте режим <b>TUN</b> («весь трафик через VPN»).</li><li>Перезапустите Zapret и обновите диагностику.</li></ol>' };
+    const a = d.vpn_adapters || [], mac = PLATFORM === 'darwin';
+    return { tone: 'warn', title: 'Включён VPN', sub: 'Работать вместе можно, но не желательно',
+      body: '<h4>Что происходит</h4><p>В системе работает VPN или прокси-клиент в режиме TUN:</p><div class="kv">' + a.map(x => '<div>' + esc(x) + '</div>').join('') + '</div>' +
+        (mac
+          ? '<h4>Как Zapretify работает с ним</h4><p>Zapret обходит блокировки только для трафика, который идёт мимо VPN — напрямую через Wi-Fi или Ethernet. То, что идёт через VPN, Zapretify не трогает, поэтому интернет не ломается.</p>'
+          : '<h4>Как Zapretify работает с ним</h4><p>Трафик, который уходит в VPN-туннель, шифруется раньше, чем его видит Zapret, — стратегии на него не действуют. Работает обход только для того, что идёт мимо VPN. Некоторые TUN-клиенты (sing-box, Clash, Hiddify) к тому же конфликтуют с драйвером WinDivert.</p>') +
+        '<h4>Почему это не желательно</h4><ul><li>Если YouTube и Discord идут через VPN, их открывает VPN, а не Zapret — стратегии на них не влияют.</li>' +
+        '<li>Когда VPN переподключается или меняет маршруты, сайты могут то открываться, то нет, и трудно понять, кто виноват.</li>' +
+        '<li>Проверка стратегий и автоподбор при включённом VPN показывают неверный результат.</li></ul>' +
+        '<h4>Как лучше</h4><ol><li>Для обхода блокировок выключите VPN — Zapretify справится сам.</li>' +
+        '<li>Если VPN нужен для другого, настройте в клиенте раздельную маршрутизацию и пустите YouTube и Discord напрямую — их будет обходить Zapretify.</li>' +
+        '<li>Перед проверкой или подбором стратегии выключайте VPN.</li></ol>' };
   },
   dns: d => {
     const sp = (d.dns || {}).spoofed || [];
@@ -1774,8 +1796,8 @@ const HELP = {
   }
 };
 let HLP = null;
-function openHelp(k) {
-  const h = HELP[k](DG.d || {}); HLP = h;
+function openHelp(k, data) {
+  const h = HELP[k](data || DG.d || {}); HLP = h;
   const c = { bad: ['--red', 'i-alert'], warn: ['--amber', 'i-bang'] }[h.tone], chip = $('#hlp-chip');
   chip.style.cssText = '--c:var(' + c[0] + ');--c-soft:var(' + c[0] + '-soft);--c-line:var(' + c[0] + '-line)'; $('use', chip).setAttribute('href', '#' + c[1]);
   setText($('#hlp-title'), h.title); setText($('#hlp-sub'), h.sub);

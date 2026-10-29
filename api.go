@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 	"time"
 
@@ -148,6 +149,8 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			"tg_proxy":  app.GetTGProxyStatus(),
 			"tg_link":   app.GetTGProxyLink(),
 			"benchmark": app.GetBenchmarkActivity(),
+			"platform":  runtime.GOOS,
+			"vpn":       activeVPN(),
 		}
 		writeJSON(w, status)
 	})
