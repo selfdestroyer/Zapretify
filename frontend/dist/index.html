@@ -1932,7 +1932,7 @@ async function emergency(k, btn) {
 $$('[data-em]').forEach(b => b.onclick = () => confirm2(b, () => emergency(b.dataset.em, b)));
 
 /* ================= обновления ================= */
-const UP = { avail: false, latest: '', url: '', checked: false, at: '', busy: false, err: '', as: { state: 'idle', msg: '', failed: [], changes: [], changed: false, auto: false, at: '' }, timer: null, bk: null };
+const UP = { avail: false, latest: '', url: '', dl: '', checked: false, at: '', busy: false, err: '', as: { state: 'idle', msg: '', failed: [], changes: [], changed: false, auto: false, at: '' }, timer: null, bk: null };
 const hm = () => { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const vnum = v => String(v || '').replace(/^v/, '');
 function renderUpApp() {
@@ -1991,13 +1991,18 @@ $('#up-rollback').onclick = e => confirm2(e.currentTarget, async () => {
 });
 async function checkApp(manual) {
   if (UP.busy) return; UP.busy = true; UP.err = ''; renderUpApp();
-  try { const d = await api('/api/updater/check'); UP.avail = !!d.available; UP.latest = d.latest_version || ''; UP.url = d.release_url || (UP.latest ? 'https://github.com/selfdestroyer/Zapretify/releases/tag/' + UP.latest : 'https://github.com/selfdestroyer/Zapretify/releases'); UP.checked = true; UP.at = hm(); }
+  try { const d = await api('/api/updater/check'); UP.avail = !!d.available; UP.latest = d.latest_version || ''; UP.url = d.release_url || (UP.latest ? 'https://github.com/selfdestroyer/Zapretify/releases/tag/' + UP.latest : 'https://github.com/selfdestroyer/Zapretify/releases'); UP.dl = d.download_url || ''; UP.checked = true; UP.at = hm();
+    // macOS: сразу скачиваем .dmg из релиза, если он там есть; иначе открываем страницу релиза.
+    const ob = $('#up-open'), tn = [...ob.childNodes].reverse().find(n => n.nodeType === 3); if (tn) tn.textContent = MAC() && UP.dl ? 'Скачать .dmg' : 'Открыть релиз'; }
   catch (e) { if (manual) UP.err = e.message; }
   UP.busy = false; renderUpApp(); attention();
   if (!manual && UP.avail) toast('Доступна новая версия Zapretify v' + vnum(UP.latest) + ' — откройте «Обновления»');
 }
 $('#up-check').onclick = () => checkApp(true);
-$('#up-open').onclick = () => { openExternal(UP.url); toast('Открываю страницу релиза в браузере'); };
+$('#up-open').onclick = () => {
+  if (MAC() && UP.dl) { openExternal(UP.dl); toast('Скачиваю ' + UP.latest + ': откройте .dmg и перетащите Zapretify в «Программы» с заменой'); return; }
+  openExternal(UP.url); toast('Открываю страницу релиза в браузере');
+};
 $('#btn-version-badge').onclick = () => { goScreen('updates'); if (UP.avail) openExternal(UP.url); else if (!UP.checked) checkApp(true); };
 ENTER.updates = () => { renderUpApp(); renderUpAs(); loadAssetsBackup(); };
 // Следит за синхронизацией баз: и запущенной кнопкой, и автоматической при старте приложения.
