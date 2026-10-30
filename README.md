@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/logo.jpg" alt="Zapretify Logo" width="600" style="border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); max-width: 100%;" />
+<img src="docs/social-preview.png" alt="Zapretify — графическая оболочка для zapret и Telegram-прокси под Windows и macOS" width="840" style="border-radius: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); max-width: 100%;" />
 
 # Zapretify
 
