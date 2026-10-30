@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"runtime"
 	"strings"
 	"time"
 
@@ -70,6 +71,22 @@ func isVersionNewer(latest, current string) bool {
 	return false
 }
 
+// pickAsset chooses the download for this platform from a release that carries both versions:
+// macOS takes the .dmg; Windows takes the installer/portable (.exe/.zip) and skips files named macOS.
+func pickAsset(assets []ReleaseAsset, goos string) *ReleaseAsset {
+	for i := range assets {
+		name := strings.ToLower(assets[i].Name)
+		mac := strings.Contains(name, "macos") || strings.HasSuffix(name, ".dmg")
+		switch {
+		case goos == "darwin" && strings.HasSuffix(name, ".dmg"):
+			return &assets[i]
+		case goos != "darwin" && !mac && (strings.HasSuffix(name, ".exe") || strings.HasSuffix(name, ".zip")):
+			return &assets[i]
+		}
+	}
+	return nil
+}
+
 func CheckAppUpdate(_ string) (*UpdateCheckResult, error) {
 	repo := config.DefaultGithubRepo
 
@@ -100,12 +117,9 @@ func CheckAppUpdate(_ string) (*UpdateCheckResult, error) {
 
 	downloadURL := ""
 	var assetSize int64
-	for _, a := range rel.Assets {
-		if strings.HasSuffix(strings.ToLower(a.Name), ".exe") || strings.HasSuffix(strings.ToLower(a.Name), ".zip") {
-			downloadURL = a.BrowserDownloadURL
-			assetSize = a.Size
-			break
-		}
+	if a := pickAsset(rel.Assets, runtime.GOOS); a != nil {
+		downloadURL = a.BrowserDownloadURL
+		assetSize = a.Size
 	}
 
 	releaseURL := rel.HTMLURL

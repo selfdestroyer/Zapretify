@@ -4,21 +4,22 @@
 
 # Zapretify
 
-**Единый графический центр управления обходом блокировок для Windows**
+**Единый графический центр управления обходом блокировок для Windows и macOS**
 
 ### Симбиоз технологий `zapret` и `tg-ws-proxy` в одном приложении
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://go.dev)
-[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011%20(x64)-0078D6?style=flat&logo=windows)](https://microsoft.com)
-[![Release](https://img.shields.io/badge/Release-v1.4.5-00C853?style=flat&logo=github)](../../releases/tag/v1.4.5)
+[![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011%20(x64)-0078D6?style=flat&logo=windows)](#install)
+[![macOS](https://img.shields.io/badge/macOS-14+%20(Apple%20Silicon%20%7C%20Intel)-000000?style=flat&logo=apple)](#macos)
+[![Release](https://img.shields.io/badge/Release-v1.5.0-00C853?style=flat&logo=github)](../../releases/tag/v1.5.0)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Planned](https://img.shields.io/badge/Planned-Linux%20%7C%20macOS-9333ea)](#roadmap)
+[![Planned](https://img.shields.io/badge/Planned-Linux-9333ea)](#roadmap)
 [![Core 1](https://img.shields.io/badge/Core%201-zapret%20(bol--van%20%2F%20Flowseal)-orange)](https://github.com/Flowseal/zapret-discord-youtube)
 [![Core 2](https://img.shields.io/badge/Core%202-tg--ws--proxy-blue)](https://github.com/Flowseal/tg-ws-proxy)
 
-*Легковесное десктопное приложение на Go и WebView2 (~15 МБ ОЗУ), объединяющее низкоуровневую десинхронизацию DPI (YouTube, Discord) и защищенный WebSocket-прокси для Telegram.*
+*Легковесное десктопное приложение на Go (WebView2 на Windows, нативное окно на macOS), объединяющее низкоуровневую десинхронизацию DPI (YouTube, Discord) и защищенный WebSocket-прокси для Telegram.*
 
-[О концепции](#about) • [Интерфейс](#interface) • [Два ядра проекта](#cores) • [Возможности](#features) • [Планы развития](#roadmap) • [Установка](#install) • [Использование](#usage) • [Сборка](#build) • [Первоисточники](#credits)
+[О концепции](#about) • [Интерфейс](#interface) • [Два ядра проекта](#cores) • [macOS](#macos) • [Возможности](#features) • [Планы развития](#roadmap) • [Установка](#install) • [Использование](#usage) • [Сборка](#build) • [Первоисточники](#credits)
 
 </div>
 
@@ -38,7 +39,9 @@
 1. **Низкоуровневый драйверный перехватчик `zapret`** (ядро bol-van + пакет актуальных стратегий Flowseal).
 2. **Прикладной прокси-мост `tg-ws-proxy`** (WebSocket / Fake-TLS туннелирование для Telegram).
 
-Оба инструмента управляются единым оркестратором на Go, имеют независимые тумблеры переключения, не конфликтуют между собой и доступны через современный графический интерфейс с поддержкой системного трея Windows.
+Оба инструмента управляются единым оркестратором на Go, имеют независимые тумблеры переключения, не конфликтуют между собой и доступны через современный графический интерфейс с поддержкой системного трея Windows и строки меню macOS.
+
+С версии **1.5.0** Zapretify работает и на **macOS 14+** (Apple Silicon и Intel): тот же интерфейс, те же стратегии Flowseal, своя служба обхода для macOS. Подробнее — в разделе [Zapretify для macOS](#macos).
 
 ---
 
@@ -197,19 +200,69 @@ graph TD
 
 ---
 
+<a id="macos"></a>
+
+## <img src="docs/icons/app-window.svg" width="26" height="26" alt="" align="top"> Zapretify для macOS
+
+Начиная с **1.5.0** Zapretify выходит и для **macOS 14 Sonoma и новее** — одно универсальное приложение для **Apple Silicon** и **Intel**. Интерфейс, Telegram-прокси, подбор стратегий, списки, обновление баз и диагностика те же, что на Windows; отличается то, как устроен перехват трафика.
+
+```mermaid
+graph TD
+    subgraph User["Пользователь (без прав root)"]
+        Shell["Zapretify.app — окно (WKWebView) и значок в строке меню"]
+        Core["zapretify-core — то же Go-ядро, что на Windows"]
+        Data["~/Library/Application Support/Zapretify — настройки, базы, списки"]
+    end
+
+    subgraph Root["Служба zapretifyd (root, LaunchDaemon)"]
+        Daemon["Проверка команд и баз, перевод стратегии"]
+        PF["pf: перенаправление портов стратегии"]
+        Engine["utunws — движок zapret для macOS (сбрасывает права до nobody)"]
+    end
+
+    Shell --> Core
+    Core -->|"Unix-сокет: status / start / stop"| Daemon
+    Data -->|"копия баз при каждом запуске"| Daemon
+    Daemon --> PF --> Engine
+    Engine -->|"десинхронизация, отправка через BPF"| Net["Интернет"]
+```
+
+| | Windows | macOS |
+|---|---|---|
+| **Движок** | `winws.exe` + драйвер WinDivert | `utunws` — порт `nfqws` от Flowseal ([наш форк](https://github.com/selfdestroyer/zapret-macos-engine), сборка с проверкой SHA-256) |
+| **Перехват трафика** | WinDivert на сетевой карте | правила `pf` отправляют порты стратегии в интерфейс `utun` |
+| **Права администратора** | UAC при запуске или служба Windows | служба `zapretifyd` ставится один раз из приложения (пароль Mac), дальше пароль не нужен |
+| **Стратегии** | `.bat` Flowseal | те же стратегии Flowseal, переводятся для `utunws` автоматически при запуске |
+| **Окно** | WebView2 + трей | нативное окно без отдельной строки заголовка + значок в строке меню |
+| **Обход при загрузке** | служба Windows | «Включать обход при загрузке Mac» |
+| **Установка** | Setup.exe / Portable | `.dmg`: перетащить в «Программы» |
+| **Удаление** | «Приложения» Windows | переместить Zapretify в Корзину (служба удалит себя сама) |
+
+**Особенности macOS-версии:**
+- **Стратегии без отставания.** Базы берутся из того же Windows-репозитория Flowseal, а не из отдельной сборки для Mac: новые стратегии и списки приходят одновременно с Windows.
+- **IPv6.** Если у провайдера есть IPv6, обход работает и по нему: сайты вроде YouTube macOS открывает по IPv6-адресу, и без этого они шли бы мимо движка.
+- **Совместимость с VPN.** Перехватывается только трафик, который идёт напрямую через Wi-Fi или Ethernet. VPN в режиме TUN продолжает работать: Zapretify обходит блокировки для того, что идёт мимо VPN. Работать вместе можно, но не желательно — приложение предупредит об этом значком «VPN».
+- **Зашифрованный DNS.** Диагностика проверяет, установлен ли профиль DNS over HTTPS, и объясняет, как его поставить: у многих провайдеров YouTube и Instagram блокируются ещё и подменой DNS.
+- **Значок в строке меню** показывает состояние кружком: зелёный — работают обе службы, оранжевый — одна, красный — ничего. Правый клик — меню управления.
+- **Game Filter** в первой версии для macOS недоступен.
+- Безопасность службы, работающей от root, описана в [`macos/SECURITY.md`](macos/SECURITY.md), устройство — в [`docs/ARCHITECTURE_MACOS.md`](docs/ARCHITECTURE_MACOS.md).
+
+---
+
 <a id="features"></a>
 
 ## <img src="docs/icons/sparkles.svg" width="26" height="26" alt="" align="top"> Возможности
 
-### <img src="docs/icons/app-window.svg" width="22" height="22" alt="" align="top"> Компактный интерфейс и интеграция с Windows
+### <img src="docs/icons/app-window.svg" width="22" height="22" alt="" align="top"> Компактный интерфейс и интеграция с Windows и macOS
 - **Окно 720×380**: один главный экран вместо вкладок, настройки в окнах-диалогах, редкие действия — в нижнем меню.
 - **Корректный масштаб**: размер окна считается по клиентской области с учётом масштаба Windows (100–200%), при переносе на монитор с другим DPI окно пересчитывается.
 - **Тёмная тема и DWM Dark Mode**: тёмный заголовок окна Windows, единая палитра (индиго — действия, зелёный — работает, янтарный — внимание, красный — ошибка).
 - **Системные шрифты** (Segoe UI, Cascadia Mono / Consolas): интерфейс ничего не загружает из интернета и одинаково выглядит без сети.
 - **Подписи для экранного диктора** и всплывающие подсказки у всех кнопок-иконок; поддержка режима «уменьшить анимацию».
 - **Минимальное потребление памяти**: легковесный движок на Go + WebView2 требует всего ~15–20 МБ ОЗУ (в отличие от Electron-аналогов на 200+ МБ).
+- **macOS**: нативное окно (WKWebView) без отдельной строки заголовка — кнопки окна встроены в шапку интерфейса, шапкой окно перетаскивается; около 35 МБ ОЗУ вместе с ядром.
 
-### <img src="docs/icons/bell.svg" width="22" height="22" alt="" align="top"> Управление из системного трея (ПКМ)
+### <img src="docs/icons/bell.svg" width="22" height="22" alt="" align="top"> Управление из системного трея и строки меню (ПКМ)
 - Сворачивание по нажатию кнопки минимизации или закрытия.
 - **Интерактивное контекстное меню**:
   - `Открыть Zapretify`;
@@ -217,6 +270,7 @@ graph TD
   - `Включить / Выключить Telegram прокси` (динамический статус);
   - `Выход` с чистым завершением дочерних процессов.
 - Информативный тултип при наведении курсора.
+- **macOS**: значок в строке меню с цветным кружком состояния; левый клик открывает окно, правый — то же меню. Закрытие окна оставляет Zapretify в строке меню.
 
 ### <img src="docs/icons/activity.svg" width="22" height="22" alt="" align="top"> Подбор и проверка стратегий
 - **Подбор лучшей**: поочерёдная проверка всех стратегий Flowseal по выбранным целям (YouTube и Discord · 8, все · 13, Blockcheck · 5) и методу (полный, только DPI, только HTTPS).
@@ -242,22 +296,25 @@ graph TD
 ### <img src="docs/icons/list.svg" width="22" height="22" alt="" align="top"> Списки доменов
 - Редактор своих списков с быстрым добавлением: можно вставить ссылку целиком (`https://www.site.org/page` → `site.org`), формат и дубли проверяются, добавление можно отменить.
 - Базы Flowseal открываются только для просмотра — свои сайты всегда идут в «Мои сайты».
-- После сохранения можно сразу перезапустить Zapret, чтобы winws перечитал списки.
+- После сохранения можно сразу перезапустить Zapret, чтобы движок (winws на Windows, utunws на macOS) перечитал списки.
 
-### <img src="docs/icons/settings.svg" width="22" height="22" alt="" align="top"> Режим системной службы Windows
+### <img src="docs/icons/settings.svg" width="22" height="22" alt="" align="top"> Работа без открытого приложения: служба Windows и обход при загрузке Mac
 - Zapret запускается либо как процесс приложения, либо как служба Windows (`sc.exe`) — переключатель **«Запускать как службу Windows»** в настройках Zapret.
 - Служба работает с включения компьютера, даже без открытого приложения и без окна UAC.
 - Автозапуск самого приложения настраивается отдельно в **«Настройках приложения»** (через планировщик задач, без запроса UAC).
+- **macOS**: переключатель **«Включать обход при загрузке Mac»** — служба Zapretify сама запускает обход с последней стратегией после включения компьютера. Автозапуск приложения при входе — через LaunchAgent.
 
 ### <img src="docs/icons/zap.svg" width="22" height="22" alt="" align="top"> Мгновенный запуск и защита от дубликатов (Single Instance)
 - **Проверка до вызова UAC**: программа определяет наличие запущенного экземпляра через Win32 Mutex до запроса повышенных прав. Повторный клик по ярлыку не вызывает системный экран подтверждения UAC, а сразу выводит активное окно на передний план.
 - **Интеллектуальная фильтрация окон**: исключен ошибочный фокус на окнах Проводника Windows (`CabinetWClass`), если открыта папка с названием «Zapretify».
+- **macOS**: повторный запуск Zapretify.app показывает уже открытое окно, второй экземпляр не стартует.
 
 ### <img src="docs/icons/shield.svg" width="22" height="22" alt="" align="top"> Изолированное управление процессами и стабильность
 - **Точечный учёт PID (`winws.pid`)**: приложение отслеживает свой процесс `winws.exe` и завершает только его, не затрагивая другие сетевые утилиты (GoodbyeDPI и др.).
 - **Свободный фильтр перед запуском**: если тот же фильтр WinDivert держит служба `zapret` или оставшийся `winws.exe` из папки приложения, они останавливаются автоматически; про чужой `winws.exe` из другой папки приложение сообщает понятной ошибкой.
 - **Автоматическая зачистка «сирот» (`CleanupOrphans`)**: после аварийного закрытия или перезагрузки зависший процесс завершается по сохранённому PID.
-- **Диагностика и аварийный сброс**: проверка прав администратора, конфликта с GoodbyeDPI, файлов WinDivert и TCP Timestamps, сторонних процессов winws.exe, активных VPN/TUN-адаптеров и подмены DNS провайдером (с окном «Как исправить»); «Завершить Zapret», «Сброс служб и WinDivert», «Закрыть всё» с подтверждением повторным нажатием.
+- **Диагностика и аварийный сброс**: проверка прав администратора, конфликта с GoodbyeDPI, файлов WinDivert и TCP Timestamps, сторонних процессов winws.exe, активных VPN/TUN-адаптеров, подмены DNS провайдером и зашифрованного DNS (с окном «Как исправить»); «Завершить Zapret», «Сброс служб и WinDivert», «Закрыть всё» с подтверждением повторным нажатием.
+- **macOS**: вместо проверок Windows — служба Zapretify, другой обходчик (ZapretMac), VPN, подмена DNS и зашифрованный DNS; в аварийных действиях есть «Удалить службу Zapretify».
 
 ### <img src="docs/icons/package.svg" width="22" height="22" alt="" align="top"> Мастер установки с режимом обновления (In-Place Upgrade)
 - Графический установщик автоматически сканирует реестр Windows на наличие предыдущих версий.
@@ -267,7 +324,8 @@ graph TD
 - **Сессионный токен (`X-Zapretify-Token`)**: все запросы интерфейса авторизуются криптографическим токеном с валидацией за константное время. Токен передается строго в заголовках.
 - **Блокировка межсайтовых запросов**: строгая проверка заголовков `Host` (защита от DNS Rebinding) и `Origin` (блокировка внешних сайтов и iframe-песочниц `null`, `file://`, `data:`).
 - **Безопасные пути**: редактор списков работает исключительно с `.txt` файлами внутри папки `lists/`, блокируя попытки выхода за пределы каталога, потоки данных NTFS (`:`) и зарезервированные системные устройства Windows (`CON`, `PRN`, `AUX`, `NUL` и др.).
-- **Внешние ссылки в браузере по умолчанию**: клики по ссылкам (GitHub, Telegram) открывают стандартный браузер пользователя через нативный системный вызов Windows `ShellExecuteW`.
+- **Внешние ссылки в браузере по умолчанию**: клики по ссылкам (GitHub, Telegram) открывают стандартный браузер пользователя через нативный системный вызов (`ShellExecuteW` на Windows, `NSWorkspace` на macOS).
+- **macOS**: от root работает только служба `zapretifyd` — команды принимает только от владельца, проверяет каждую опцию стратегии по белому списку и читает ваши файлы без следования симлинкам. Подробно — в [`macos/SECURITY.md`](macos/SECURITY.md).
 - **Без внешних источников**: политика CSP разрешает загрузку только с самого приложения.
 
 ---
@@ -277,12 +335,12 @@ graph TD
 ## <img src="docs/icons/download.svg" width="26" height="26" alt="" align="top"> Установка и запуск
 
 ### Вариант 1: Portable-версия (без установки)
-1. Скачайте архив **`Zapretify-Portable-v1.4.5.zip`** из раздела [Releases](../../releases).
+1. Скачайте архив **`Zapretify-Portable-v1.5.0.zip`** из раздела [Releases](../../releases).
 2. Распакуйте архив в удобный каталог (например, `C:\Program Files\Zapretify` или `D:\Tools\Zapretify`).
 3. Запустите **`Zapretify.exe`** от имени администратора.
 
 ### Вариант 2: Установщик Windows (Setup.exe)
-1. Скачайте и запустите **`Zapretify-Setup-v1.4.0.exe`** из раздела [Releases](../../releases).
+1. Скачайте и запустите **`Zapretify-Setup-v1.5.0.exe`** из раздела [Releases](../../releases).
 2. Программа установки:
    - Автоматически распознает уже установленную версию программы и предложит ее обновление с сохранением пользовательских настроек и списков;
    - Автоматически предложит оптимальный путь установки с возможностью выбора другой папки;
@@ -291,6 +349,15 @@ graph TD
    - Корректно зарегистрирует программу в системе для чистого удаления через стандартные «Параметры Windows -> Приложения».
 
 > **Обратите внимание**: для перехвата сетевых пакетов драйвер **WinDivert** требует права локального администратора. Приложение запросит UAC при старте.
+
+### Вариант 3: macOS 14+ (Apple Silicon и Intel)
+1. Скачайте **`Zapretify-macOS-v1.5.0.dmg`** из раздела [Releases](../../releases), откройте его и перетащите **Zapretify** в папку **«Программы»**.
+2. Запустите Zapretify. Приложение подписано без сертификата Apple, поэтому при первом запуске macOS может его не открыть: **Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»**.
+3. На главном экране нажмите **«Установить службу»** и введите пароль Mac — это нужно один раз. Служба включает перехват трафика; дальше обход включается и выключается без пароля.
+4. Если стоит ZapretMac — остановите и удалите его: два обходчика не могут работать одновременно.
+
+**Обновление**: на экране «Обновления» нажмите «Скачать .dmg» и перетащите новую версию в «Программы» с заменой; приложение предложит обновить службу.
+**Удаление**: переместите Zapretify в Корзину — служба удалит себя сама в течение 10–15 минут. Можно и сразу: «Диагностика и сброс» → «Удалить службу Zapretify».
 
 ---
 
@@ -337,16 +404,28 @@ graph TD
 1. Включите переключатель **«Telegram»** на главном экране.
 2. Нажмите значок **«Открыть в Telegram»** рядом с переключателем (или скопируйте ссылку соседним значком) и подтвердите добавление прокси в Telegram.
 3. В настройках (клик по строке «Telegram») можно сменить порт и сгенерировать новый секретный ключ — после смены ключа добавьте прокси в Telegram заново. В разделе **«Задержка до дата-центров»** — замер пинга до DC1–DC5.
+4. **Если Telegram не подключается.** Некоторые провайдеры блокируют и путь прокси через Cloudflare, и прямые адреса Telegram. Тогда под «Telegram» на главном экране появится красная **«Ошибка»** — клик по ней открывает настройки прокси на блоке «Если Telegram не подключается». Там две кнопки: **«Включить IPSet «loaded»»** (Zapret начнёт обрабатывать подсети Cloudflare) или кнопка, которая добавляет домен прокси в **«Мои сайты»** (Zapret будет обходить только его). Zapret при этом должен быть включён.
+
+<div align="center">
+  <img src="screens/mac_telegram_fix.png" alt="Если Telegram не подключается" width="640" style="max-width: 100%;" />
+
+*Если Telegram не подключается: решение в одну кнопку прямо в настройках прокси*
+</div>
 
 <div align="center">
   <img src="screens/telegram_dc.jpg" alt="Задержка до дата-центров Telegram" width="640" style="border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.4); max-width: 100%;" />
 </div>
 
-### 6. Диагностика, журнал и обновления
-- **«Диагностика и сброс»** — проверка прав администратора, GoodbyeDPI, WinDivert, TCP Timestamps, сторонних winws.exe, VPN/TUN-адаптеров и подмены DNS с кнопками исправления и подсказками, копирование отчёта для разработчика и аварийные действия.
+### 6. Особенности на macOS
+- Всё управление то же; вместо трея — значок в строке меню, вместо службы Windows — **«Включать обход при загрузке Mac»** в настройках Zapret.
+- Если обход не включается, на главном экране появится «Нужна служба Zapretify» или «Обновите службу Zapretify» — нажмите кнопку и введите пароль.
+- Перед подбором стратегии выключите VPN: с ним результаты будут неверными.
+
+### 7. Диагностика, журнал и обновления
+- **«Диагностика и сброс»** — проверка прав администратора, GoodbyeDPI, WinDivert, TCP Timestamps, сторонних winws.exe, VPN/TUN-адаптеров, подмены DNS и зашифрованного DNS с кнопками исправления и подсказками (на macOS — служба Zapretify, ZapretMac, VPN и DNS), копирование отчёта для разработчика и аварийные действия.
 - **«Журнал событий»** — фильтр «Все / Предупреждения / Ошибки», автопрокрутка и очистка.
 - **«Обновления»** — проверка новой версии на GitHub, обновление баз Flowseal и откат к предыдущим базам; ваши списки при этом не меняются.
-- **«Настройки приложения»** — автозапуск Zapretify при входе в Windows и запуск свёрнутым в трей.
+- **«Настройки приложения»** — автозапуск Zapretify при входе в систему и запуск свёрнутым в трей (на macOS — без окна, только значок в строке меню).
 
 <table>
 <tr>
@@ -374,7 +453,7 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o Zapretify.e
 go build -ldflags="-s -w -H=windowsgui" -o Zapretify.exe .
 
 # Сборка инсталлятора (Setup.exe):
-GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o dist/Zapretify-Setup-v1.4.0.exe ./cmd/installer
+GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o dist/Zapretify-Setup-v1.5.0.exe ./cmd/installer
 ```
 
 ### Автоматическая сборка дистрибутива
@@ -382,7 +461,15 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o dist/Zapret
 ```cmd
 build_all.bat
 ```
-Скрипт скомпилирует `Zapretify.exe`, упакует портативный архив `dist/Zapretify-Portable-v1.4.5.zip` и автоматически соберёт инсталлятор `dist/Zapretify-Setup-v1.4.0.exe`.
+Скрипт скомпилирует `Zapretify.exe`, упакует портативный архив `dist/Zapretify-Portable-v1.5.0.zip` и автоматически соберёт инсталлятор `dist/Zapretify-Setup-v1.5.0.exe`.
+
+### Сборка для macOS
+Нужны macOS 14+, Go и Xcode Command Line Tools (`xcode-select --install`), а также Python 3 для оформления `.dmg`.
+```bash
+bash macos/scripts/build-app.sh   # dist/macos/Zapretify.app (arm64 + x86_64)
+bash macos/scripts/build-dmg.sh   # dist/Zapretify-macOS-v<версия>.dmg
+```
+Движок `utunws` скачивается из релиза [selfdestroyer/zapret-macos-engine](https://github.com/selfdestroyer/zapret-macos-engine) по версии и SHA-256 из `macos/engine.lock`; при несовпадении сборка останавливается.
 
 ---
 
@@ -390,18 +477,17 @@ build_all.bat
 
 ## <img src="docs/icons/map.svg" width="26" height="26" alt="" align="top"> Планы развития (Roadmap)
 
-В текущей версии реализован полнофункциональный клиент для **Windows 10/11 x64**. В дальнейших релизах запланирована активная адаптация и оптимизация под другие платформы:
+Сейчас Zapretify работает на **Windows 10/11 x64** и **macOS 14+**. Следующая платформа — Linux:
 
 - [x] **Windows 10 / 11 (x64)**:
   - Полная поддержка WinDivert, системной службы Windows (`sc.exe`), автозапуска, системного трея и графического инсталлятора.
-- [ ] **Оптимизация под Linux**:
-  - Адаптация ядра под `nfqws` (Netfilter Queue) из оригинального комплекса zapret bol-van;
-  - Управление правилами маршрутизации через `iptables` / `nftables` и фоновым сервисом `systemd`;
-  - Сборка пакетов `.deb`, `.rpm`, `.AppImage` и поддержка headless CLI-режима.
-- [ ] **Оптимизация под macOS**:
-  - Интеграция с подсистемой перехвата пакетов macOS через Packet Filter (`pf`) и `divert-sockets`;
-  - Нативная сборка универсального бандла `.app` / `.dmg` для архитектур **Apple Silicon (M1–M4 / ARM64)** и **Intel (x86_64)**;
-  - Адаптация интерфейса под системный статус-бар macOS (Menu Bar) с темной темой.
+- [x] **macOS 14+ (Apple Silicon и Intel)** — с версии 1.5.0:
+  - Движок `utunws` (порт `nfqws` от Flowseal), перехват через `pf` и `utun`, служба `zapretifyd` (LaunchDaemon);
+  - Нативное окно и значок в строке меню, `.dmg` для Apple Silicon и Intel.
+- [ ] **Linux**:
+  - Родной движок `nfqws` из zapret bol-van и перенаправление трафика через `nftables` (NFQUEUE);
+  - Служба `systemd` по той же схеме, что на macOS (сокет, проверка пользователя, безопасный импорт баз);
+  - Окно WebKitGTK (Wayland и X11) и значок в трее через StatusNotifierItem; пакеты `.deb`, `.rpm`, AppImage.
 
 ---
 
@@ -419,6 +505,7 @@ Zapretify/
 │   ├── cygwin1.dll           # POSIX-совместимый слой
 │   └── *.bin                 # Бинарные пэйлоады (Google SNI, QUIC, Discord STUN)
 ├── cmd/                      # Точки входа дополнительных утилит
+│   ├── zapretifyd/           # Служба macOS (root, LaunchDaemon) и её консольный клиент
 │   └── installer/            # Графический инсталлятор для Windows (Go + WebView2)
 │       ├── frontend/         # Веб-интерфейс мастера установки
 │       ├── main.go           # Движок распаковки, ярлыков и реестра Windows
@@ -426,18 +513,25 @@ Zapretify/
 ├── core/                     # Исходный код бэкенда (Go)
 │   ├── config/               # Менеджер настроек (JSON) и реестр автозапуска
 │   ├── logger/               # Потокобезопасный логгер в zapretify.log
+│   ├── macdaemon/            # Служба macOS: протокол, проверка аргументов, импорт баз, pf и utunws
 │   ├── platform/             # Win32 API, UAC elevation, системная диагностика
 │   ├── tgproxy/              # Реализация ядра tg-ws-proxy (WebSocket MTProto bridge)
 │   ├── updater/              # Синхронизатор баз и стратегий Flowseal
-│   └── zapret/               # Диспетчер процесса winws, WinDivert, бенчмарк, служба
+│   └── zapret/               # Интерфейс Engine, winws, WinDivert, перевод стратегий для macOS, бенчмарк
 ├── docs/                     # Документация (архитектура, безопасность, история версий)
 │   ├── icons/                # SVG-иконки разделов README (Lucide, ISC)
 │   ├── ARCHITECTURE.md       # Подробное описание технической архитектуры
+│   ├── ARCHITECTURE_MACOS.md # Устройство macOS-версии: служба, движок, pf, оболочка
 │   ├── CHANGELOG.md          # История версий и изменений
 │   └── SECURITY.md           # Модель безопасности и контакты
 ├── frontend/                 # Пользовательский интерфейс (Single Page Application)
 │   └── dist/index.html       # Интерфейс 1.4.0: HTML5/CSS3/Vanilla JS в одном файле
 ├── lists/                    # Списки хостов и IP-диапазонов Flowseal
+├── macos/                    # macOS: оболочка Swift, Info.plist, фон .dmg, скрипты сборки и службы
+│   ├── app/                  # Shell.swift, Info.plist, dmg-background.swift
+│   ├── scripts/              # build-app.sh, build-dmg.sh, install/uninstall-daemon.sh
+│   ├── engine.lock           # Версия и SHA-256 движка utunws
+│   └── SECURITY.md           # Модель угроз службы, работающей от root
 ├── packaging/                # Резервные скрипты установщика Inno Setup (installer.iss)
 ├── screens/                  # Скриншоты интерфейса для README
 ├── api.go                    # Внутренний HTTP REST API для связи GUI с Go-ядром
@@ -452,7 +546,8 @@ Zapretify/
 ├── strategies.json           # Локальная база стратегий Flowseal
 ├── window_windows.go         # Интеграция с Win32: WebView2, системный трей, DWM Dark Mode
 ├── window_dpi_windows.go     # Размер окна по клиентской области с учётом DPI монитора
-└── window_other.go           # Заглушки для кросс-платформенной компиляции
+├── platform_darwin.go        # macOS: движок через службу, папка данных, установка и удаление службы
+└── window_other.go           # macOS/Linux: окно в оболочке Zapretify.app или в браузере
 ```
 
 ---
@@ -473,7 +568,12 @@ Zapretify/
    Готовые стратегии для обхода замедления YouTube и Discord в РФ (актуальная база сценариев), списки доменов и IP-диапазонов, бинарные пэйлоады.  
    Лицензия: [MIT License](https://github.com/Flowseal/zapret-discord-youtube/blob/main/LICENSE).
 
-3. **[Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)** *(протокол WebSocket over TLS)*  
+3. **[Flowseal/zapret-mac-discord-youtube](https://github.com/Flowseal/zapret-mac-discord-youtube)** *(движок utunws для macOS)*  
+   *Автор: Flowseal*  
+   Порт `nfqws` на macOS через `utun` и BPF. Zapretify собирает его из своего форка [selfdestroyer/zapret-macos-engine](https://github.com/selfdestroyer/zapret-macos-engine) без изменений кода движка.  
+   Лицензия: [MIT License](https://github.com/Flowseal/zapret-mac-discord-youtube/blob/main/LICENSE).
+
+4. **[Flowseal/tg-ws-proxy](https://github.com/Flowseal/tg-ws-proxy)** *(протокол WebSocket over TLS)*  
    *Автор: Flowseal*  
    Концепция и реализация проксирования протокола Telegram MTProto через защищенные соединения WebSocket (WSS) и CDN-сети Cloudflare.  
    Лицензия: [MIT License](https://github.com/Flowseal/tg-ws-proxy/blob/main/LICENSE).

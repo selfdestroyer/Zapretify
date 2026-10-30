@@ -36,3 +36,9 @@ config.json.bad
 
 # Local benchmark result (written next to the app)
 /last_benchmark.json
+
+# macOS port
+/bin/utunws
+/build/
+*.app
+*.dmg

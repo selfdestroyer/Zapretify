@@ -5,8 +5,10 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -151,6 +153,8 @@ const (
 	maxVersionBytes = 64
 )
 
+var fetchRetryDelay = 2 * time.Second
+
 // fetchLimited downloads a URL and refuses non-200 answers, empty bodies and bodies over the limit.
 func fetchLimited(client *http.Client, rawURL string, limit int64) ([]byte, error) {
 	resp, err := client.Get(rawURL)
@@ -172,6 +176,18 @@ func fetchLimited(client *http.Client, rawURL string, limit int64) ([]byte, erro
 		return nil, fmt.Errorf("empty response")
 	}
 	return body, nil
+}
+
+// fetchRetry is fetchLimited with one more attempt after a network error (a timeout, a reset):
+// GitHub sometimes does not answer one request while the others go through.
+func fetchRetry(client *http.Client, rawURL string, limit int64) ([]byte, error) {
+	body, err := fetchLimited(client, rawURL, limit)
+	var netErr net.Error
+	if err != nil && errors.As(err, &netErr) {
+		time.Sleep(fetchRetryDelay)
+		body, err = fetchLimited(client, rawURL, limit)
+	}
+	return body, err
 }
 
 // validRawArgs rejects argument chains that contain control characters or newlines.
@@ -354,7 +370,7 @@ func syncFakeBins(client *http.Client, binDir string, needed map[string]bool, su
 		if existed && (t.sha == "" || gitBlobSHA(local) == t.sha) {
 			continue
 		}
-		body, err := fetchLimited(client, flowsealRawBase+"bin/"+url.PathEscape(t.name), maxBinBytes)
+		body, err := fetchRetry(client, flowsealRawBase+"bin/"+url.PathEscape(t.name), maxBinBytes)
 		if err == nil && t.sha != "" && gitBlobSHA(body) != t.sha {
 			err = fmt.Errorf("контрольная сумма не совпала с GitHub")
 		}
@@ -443,7 +459,7 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 	sort.Strings(listNames)
 	var listChanges []string
 	for _, filename := range listNames {
-		body, err := fetchLimited(client, UpstreamAssetURLs[filename], maxListBytes)
+		body, err := fetchRetry(client, UpstreamAssetURLs[filename], maxListBytes)
 		if err != nil {
 			logger.Log("[Updater] %s: %v", filename, err)
 			summary.FailedFiles = append(summary.FailedFiles, filename)
@@ -491,7 +507,7 @@ func UpdateUpstreamAssets(listsDir string, appDir string) (*AssetUpdateSummary, 
 			defer func() { <-sem }()
 
 			rawURL := "https://raw.githubusercontent.com/Flowseal/zapret-discord-youtube/main/" + url.PathEscape(filename)
-			bodyBytes, err := fetchLimited(client, rawURL, maxBatchBytes)
+			bodyBytes, err := fetchRetry(client, rawURL, maxBatchBytes)
 			if err != nil {
 				stratMu.Lock()
 				summary.FailedFiles = append(summary.FailedFiles, filename)

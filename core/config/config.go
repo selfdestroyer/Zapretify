@@ -14,7 +14,7 @@ import (
 	"zapretify/core/logger"
 )
 
-const Version = "1.4.5"
+const Version = "1.5.0"
 const DefaultGithubRepo = "selfdestroyer/Zapretify"
 
 var (
@@ -102,6 +102,7 @@ type ZapretConfig struct {
 	GameFilterUDP    string `json:"game_filter_udp"`  // e.g. "1024-65535"
 	IPSetMode        string `json:"ipset_mode"`       // "loaded", "none", "any"
 	AutostartService bool   `json:"autostart_service"`
+	BootStart        bool   `json:"boot_start"` // macOS: the root service starts the bypass when the Mac boots
 	ServiceMode      bool   `json:"service_mode"`
 
 	// Legacy compatibility flags
@@ -255,12 +256,7 @@ var (
 func Get() *Config {
 	once.Do(func() {
 		instance = DefaultConfig()
-		exePath, err := os.Executable()
-		if err != nil {
-			exePath = "."
-		}
-		appDir := filepath.Dir(exePath)
-		instance.configPath = filepath.Join(appDir, "config.json")
+		instance.configPath = filepath.Join(AppDir(), "config.json")
 		_ = instance.Load()
 		instance.App.GithubRepo = DefaultGithubRepo
 	})

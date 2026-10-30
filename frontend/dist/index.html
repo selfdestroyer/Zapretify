@@ -76,6 +76,8 @@ button,input,select{font-family:inherit;color:inherit}
 .top b{font-size:15px;font-weight:700;letter-spacing:-.2px}
 .ver{font:600 10px var(--mono);color:var(--muted);background:var(--raised);padding:2px 7px;border-radius:6px;border:0;cursor:pointer;transition:color .2s,background .2s}
 .ver:hover{color:var(--text);background:var(--raised-2)}
+.vpnb{display:inline-flex;align-items:center;gap:3px;font:600 10px var(--mono);color:var(--amber);background:var(--amber-soft);border:1px solid var(--amber-line);padding:1px 7px 1px 4px;border-radius:6px;cursor:pointer;transition:filter .2s}
+.vpnb:hover{filter:brightness(1.25)}.vpnb .ico{width:12px;height:12px}.vpnb[hidden]{display:none}
 .body{flex:1;padding:2px 20px 20px;display:flex;flex-direction:column;gap:12px;min-height:0}
 .body>*{animation:rise .46s var(--ease) both;animation-delay:calc(var(--i,0)*60ms)}
 
@@ -113,6 +115,19 @@ button,input,select{font-family:inherit;color:inherit}
 .rowc[data-state=pending] .st{color:var(--indigo-text)}
 .sub em{font:500 11.5px var(--mono);font-style:normal;color:var(--text-2)}
 .sub em::before{content:"·";margin-right:7px;color:var(--muted);font-family:inherit}
+.cferr{background:none;border:0;padding:0;font:500 11.5px var(--mono);color:var(--text-2);cursor:pointer;text-align:left}
+.cferr::before{content:"·";margin-right:7px;color:var(--muted)}
+.cferr b{color:var(--red);font-weight:700;margin-right:5px}
+.cferr:hover span,.cferr:focus-visible span{text-decoration:underline}
+.row.tgfix{flex-direction:column;align-items:stretch;gap:8px;border:1px solid var(--divider);border-radius:12px;padding:12px;margin-top:10px}
+.tgfix,.tgfix .row-t{text-align:left}
+.tgfix .row-t{align-items:flex-start}
+.tgfix.bad{border-color:var(--red-line);background:var(--red-soft)}
+.tgfix.flash{animation:tgflash 1.2s var(--ease) 2}
+@keyframes tgflash{50%{box-shadow:0 0 0 3px var(--red-line)}}
+.tgfix p{font-size:12px;color:var(--text-2);line-height:1.45;margin:0}
+.tgfix ol{margin:0;padding-left:18px;font-size:12px;color:var(--text-2);line-height:1.45}
+.tgfix .acts{display:flex;gap:12px;align-items:center;justify-content:flex-start;flex-wrap:wrap}
 .ctl{display:flex;align-items:center;gap:6px}
 .rowc:hover .ib.gear,.ib.gear:focus-visible{opacity:1}
 .qa{display:flex;gap:2px;overflow:hidden;max-width:0;opacity:0;transition:max-width .4s var(--ease),opacity .3s}
@@ -149,6 +164,9 @@ button,input,select{font-family:inherit;color:inherit}
 
 /* ---------- ЭКРАН АВТОПОДБОРА ---------- */
 .s-top{height:50px;flex:none;display:flex;align-items:center;gap:6px;padding:0 16px 0 10px}
+/* macOS: окно без системного заголовка, кнопки окна лежат в шапке слева, шапкой окно перетаскивается */
+.mac-shell .top{padding-left:88px}.mac-shell .s-top{height:54px;padding-left:80px}
+.mac-shell .top,.mac-shell .s-top{-webkit-user-select:none;user-select:none;cursor:default}
 .s-top h1{font-size:15px;font-weight:700;letter-spacing:-.2px}
 .s-top .sp{flex:1}
 .schip{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;font-weight:600;padding:3px 10px;border-radius:999px;border:1px solid transparent;color:var(--muted);background:var(--raised);opacity:0;transform:translateY(3px);transition:opacity .3s,transform .3s var(--ease),color .3s,background .3s,border-color .3s}
@@ -355,6 +373,7 @@ button,input,select{font-family:inherit;color:inherit}
 .ck .ci i{width:13px;height:13px;border-radius:50%;border:2px solid var(--raised-2);border-top-color:var(--indigo-text);animation:rot .8s linear infinite}
 .ck[data-s=ok] .ci{background:var(--green-soft);color:var(--green)}
 .ck[data-s=warn] .ci{background:var(--amber-soft);color:var(--amber)}
+.ck[data-s=info] .ci{background:var(--indigo-soft);color:var(--indigo-text)}.ck[data-s=info] .ct span{color:var(--muted)}
 .ck[data-s=bad] .ci{background:var(--red-soft);color:var(--red)}
 .ck[data-s=warn]{border-color:var(--amber-line)}.ck[data-s=bad]{border-color:var(--red-line)}
 .ck .ct{flex:1;min-width:0}
@@ -394,7 +413,7 @@ button,input,select{font-family:inherit;color:inherit}
 .ubk b{color:var(--text-2);font-weight:600}
 .hlp-b{flex:0 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:4px 16px 10px;font-size:12.5px;line-height:1.5;color:var(--text-2)}
 .hlp-b h4{font-size:12px;font-weight:700;color:var(--text);margin:10px 0 3px}
-.hlp-b ol{margin:0;padding-left:18px}.hlp-b li{margin:2px 0}
+.hlp-b ol,.hlp-b ul{margin:0;padding-left:18px}.hlp-b a{color:var(--indigo-text)}.hlp-b li{margin:2px 0}
 .hlp-b b{color:var(--text);font-weight:600}
 .hlp-b .kv{margin-top:6px;border:1px solid var(--border);border-radius:10px;background:var(--raised);padding:6px 10px;font:11.5px/1.5 ui-monospace,"Cascadia Mono",Consolas,monospace;color:var(--text-2);overflow-wrap:anywhere}
 .hlp-b .kv div+div{margin-top:3px}
@@ -604,6 +623,7 @@ select.inp option{background:var(--card)}
       <img class="logo" src="/logo.png" alt="Zapretify">
       <b>Zapretify</b>
       <button class="ver" id="btn-version-badge" title="Проверить обновления">v1.4.0</button>
+      <button class="vpnb" id="vpn-badge" hidden title="Включён VPN: работать вместе можно, но не желательно"><svg class="ico"><use href="#i-bang"/></svg>VPN</button>
       <span style="flex:1"></span>
       <button class="ib" id="top-log" title="Журнал событий" aria-label="Журнал событий"><svg class="ico"><use href="#i-file"/></svg><i class="lgdot" id="lgdot" hidden></i></button>
     </header>
@@ -626,7 +646,7 @@ select.inp option{background:var(--card)}
         </article>
         <article class="rowc" id="card-t" data-tone="teal" data-state="off">
           <div class="chip"><svg class="ico"><use href="#i-send"/></svg></div>
-          <div class="txt"><h3>Telegram</h3><div class="sub"><i class="dot" data-s="off"></i><span class="st">Выключен</span><em hidden></em></div></div>
+          <div class="txt"><h3>Telegram</h3><div class="sub"><i class="dot" data-s="off"></i><span class="st">Выключен</span><em hidden></em><button class="cferr" id="t-err" hidden title="Как исправить"><b>Ошибка</b><span>путь через Cloudflare заблокирован</span></button></div></div>
           <div class="ctl">
             <div class="qa">
               <button class="ib" id="t-open" title="Открыть в Telegram" aria-label="Открыть в Telegram"><svg class="ico g-send"><use href="#i-send"/></svg></button>
@@ -731,12 +751,12 @@ select.inp option{background:var(--card)}
 
         <!-- 4. ошибка -->
         <section class="phase stg" data-p="error">
-          <h2 style="--i:0">Не удалось запустить winws.exe</h2>
+          <h2 style="--i:0" data-mac="Не удалось запустить движок обхода">Не удалось запустить winws.exe</h2>
           <p class="lead" id="err-lead" style="--i:1"></p>
           <div class="checks" style="--i:2">
-            <div class="chk"><svg class="ico"><use href="#i-shield"/></svg>Приложение запущено от имени администратора</div>
-            <div class="chk"><svg class="ico"><use href="#i-file"/></svg>Файлы на месте — папка bin/ не повреждена</div>
-            <div class="chk"><svg class="ico"><use href="#i-alert"/></svg>Нет конфликта WinDivert (GoodbyeDPI и др.)</div>
+            <div class="chk" data-mac="Служба Zapretify установлена и отвечает"><svg class="ico"><use href="#i-shield"/></svg>Приложение запущено от имени администратора</div>
+            <div class="chk" data-mac="Выключены VPN, ZapretMac и другие обходчики"><svg class="ico"><use href="#i-file"/></svg>Файлы на месте — папка bin/ не повреждена</div>
+            <div class="chk" data-win><svg class="ico"><use href="#i-alert"/></svg>Нет конфликта WinDivert (GoodbyeDPI и др.)</div>
           </div>
           <div class="acts" style="--i:3"><button class="btn btn-primary btn-lg" id="e-retry"><svg class="ico"><use href="#i-refresh"/></svg>Повторить</button><button class="btn btn-ghost btn-lg" id="e-diag"><svg class="ico"><use href="#i-activity"/></svg>Диагностика</button><button class="link" id="e-log"><svg class="ico"><use href="#i-file"/></svg>Журнал</button></div>
         </section>
@@ -773,8 +793,9 @@ select.inp option{background:var(--card)}
       </div>
       <div class="dg-r">
         <h3>Аварийные действия</h3>
-        <div class="em first"><div class="et"><b>Завершить Zapret</b><span>Принудительно закрыть все winws.exe</span></div><button class="btn btn-ghost btn-sm" data-em="kill">Завершить</button></div>
-        <div class="em"><div class="et"><b>Сброс служб и WinDivert</b><span>Если порт занят или драйвер завис</span></div><button class="btn btn-ghost btn-sm" data-em="reset">Сбросить</button></div>
+        <div class="em first"><div class="et"><b>Завершить Zapret</b><span data-mac="Остановить движок обхода в службе Zapretify">Принудительно закрыть все winws.exe</span></div><button class="btn btn-ghost btn-sm" data-em="kill">Завершить</button></div>
+        <div class="em" data-win><div class="et"><b>Сброс служб и WinDivert</b><span>Если порт занят или драйвер завис</span></div><button class="btn btn-ghost btn-sm" data-em="reset">Сбросить</button></div>
+        <div class="em" data-mac-only hidden><div class="et"><b>Удалить службу Zapretify</b><span>Выключает обход и удаляет службу. После этого приложение можно убрать в Корзину</span></div><button class="btn btn-ghost btn-sm" data-em="uninstall">Удалить</button></div>
         <div class="em"><div class="et"><b>Закрыть всё</b><span>Приложение, Zapret и Telegram-прокси</span></div><button class="btn btn-danger btn-sm" data-em="exit">Закрыть</button></div>
       </div>
     </div>
@@ -823,8 +844,8 @@ select.inp option{background:var(--card)}
     <button class="act" style="--i:0" data-act="search"><span class="ai"><svg class="ico"><use href="#i-search"/></svg></span><span class="at"><b>Подбор и проверка стратегий</b><span id="act-s-sub">Найти лучшую или проверить одну</span></span><svg class="ico"><use href="#i-chev"/></svg></button>
     <button class="act" style="--i:1" data-act="lists"><span class="ai"><svg class="ico"><use href="#i-list"/></svg></span><span class="at"><b>Списки доменов</b><span id="act-l-sub">Мои сайты, исключения и базы Flowseal</span></span><svg class="ico"><use href="#i-chev"/></svg></button>
     <button class="act" style="--i:2" data-act="diag"><span class="ai"><svg class="ico"><use href="#i-activity"/></svg></span><span class="at"><b>Диагностика и сброс</b><span id="act-d-sub">Права, WinDivert, конфликты, аварийные действия</span></span><svg class="ico"><use href="#i-chev"/></svg></button>
-    <button class="act" style="--i:3" data-act="logs"><span class="ai"><svg class="ico"><use href="#i-file"/></svg></span><span class="at"><b>Журнал событий</b><span id="act-g-sub">Вывод winws.exe, драйвера и прокси</span></span><svg class="ico"><use href="#i-chev"/></svg></button>
-    <button class="act" style="--i:4" data-act="app"><span class="ai"><svg class="ico"><use href="#i-gear"/></svg></span><span class="at"><b>Настройки приложения</b><span>Автозапуск Zapretify и запуск в трей</span></span><svg class="ico"><use href="#i-chev"/></svg></button>
+    <button class="act" style="--i:3" data-act="logs"><span class="ai"><svg class="ico"><use href="#i-file"/></svg></span><span class="at"><b>Журнал событий</b><span id="act-g-sub" data-mac="Вывод службы, движка и прокси">Вывод winws.exe, драйвера и прокси</span></span><svg class="ico"><use href="#i-chev"/></svg></button>
+    <button class="act" style="--i:4" data-act="app"><span class="ai"><svg class="ico"><use href="#i-gear"/></svg></span><span class="at"><b>Настройки приложения</b><span data-mac="Автозапуск Zapretify и запуск в строке меню">Автозапуск Zapretify и запуск в трей</span></span><svg class="ico"><use href="#i-chev"/></svg></button>
     <button class="act" style="--i:5" data-act="updates"><span class="ai"><svg class="ico"><use href="#i-refresh"/></svg></span><span class="at"><b>Обновления</b><span id="act-u-sub">Приложение, списки и стратегии</span></span><svg class="ico"><use href="#i-chev"/></svg></button>
   </div>
 
@@ -861,7 +882,7 @@ select.inp option{background:var(--card)}
     </div>
   </div>
 
-  <div class="closed" id="closed"><svg class="ico"><use href="#i-power"/></svg><h3>Zapretify завершил работу</h3><p>Приложение, все процессы winws.exe и Telegram-прокси остановлены.</p></div>
+  <div class="closed" id="closed"><svg class="ico"><use href="#i-power"/></svg><h3>Zapretify завершил работу</h3><p data-mac="Приложение, обход блокировок и Telegram-прокси остановлены.">Приложение, все процессы winws.exe и Telegram-прокси остановлены.</p></div>
 
 </div>
 
@@ -936,6 +957,27 @@ let LAST = null;           // последний подбор (/api/zapret/bench
 let VERSION = '';
 let tgLink = '';
 let svcState = '';         // RUNNING | STOPPED | NOT_INSTALLED
+let PLATFORM = '';         // windows | darwin
+let TGCF = false;          // Telegram-прокси не может пробиться через Cloudflare
+let VPNS = [];             // активные VPN/TUN-адаптеры: «Имя (описание)»
+let SVC = null;            // macOS: служба Zapretify {installed, ok, outdated, version}; на Windows null
+let svcBusy = false;
+// macOS: без службы (или со службой от другой версии приложения) обход не запустится.
+const needSvc = () => MAC() && SVC && (!SVC.ok || SVC.outdated);
+// На Windows остаются тексты про службы Windows, winws.exe, WinDivert и UAC; на macOS — свои.
+const MAC = () => PLATFORM === 'darwin';
+const pf = (win, mac) => MAC() ? mac : win;
+function applyPlatform() {
+  document.documentElement.classList.toggle('mac', MAC());
+  if (!MAC()) return;
+  document.querySelectorAll('[data-win]').forEach(el => el.hidden = true);
+  document.querySelectorAll('[data-mac-only]').forEach(el => el.hidden = false);
+  // Текст заменяется в последнем текстовом узле, чтобы не потерять иконку внутри элемента.
+  document.querySelectorAll('[data-mac]').forEach(el => {
+    const t = [...el.childNodes].reverse().find(n => n.nodeType === 3 && n.textContent.trim());
+    if (t) t.textContent = el.dataset.mac; else el.textContent = el.dataset.mac;
+  });
+}
 const TARGETS = { all: [], yt_discord: [], blockcheck: [] };
 const CATKEY = { youtube: 'yt', discord: 'dc', blockcheck: 'bc', baseline: 'bl' };
 
@@ -957,17 +999,28 @@ function render() {
     partial: ['Часть служб включена', S.z === 'on' ? 'Работает только Zapret — Telegram-прокси выключен' : 'Работает только Telegram-прокси — Zapret выключен'],
     off: ['Все службы выключены', 'Запустите обход блокировок и прокси в один клик'],
     pending: ['Применяю изменения…', 'Это займёт пару секунд'] }[hs];
+  if (needSvc() && !searching) {
+    setAttr($('#hero'), 'data-state', svcBusy ? 'pending' : 'partial');
+    copy[0] = svcBusy ? 'Устанавливаю службу…' : SVC.outdated ? 'Обновите службу Zapretify' : SVC.installed ? 'Служба Zapretify не отвечает' : 'Нужна служба Zapretify';
+    copy[1] = svcBusy ? 'Подтвердите установку паролем администратора' : SVC.outdated ? 'Она от другой версии приложения (' + (SVC.version || '?') + '). Обновление займёт пару секунд'
+      : 'Она включает обход блокировок. macOS один раз спросит пароль администратора';
+  }
   setText($('#hero-title'), copy[0]); setText($('#hero-desc'), copy[1]);
   const mb = $('#btn-master'), anyOn = S.z === 'on' || S.t === 'on';
   mb.classList.toggle('btn-danger', anyOn && !pend && !searching); mb.classList.toggle('btn-primary', !anyOn || pend || searching);
   mb.classList.toggle('is-pending', pend && !searching); mb.disabled = searching;
   setText($('#master-lbl'), searching ? (BENCH.mode === 'one' ? 'Проверка…' : 'Подбор…') : pend ? 'Применяю…' : anyOn ? 'Остановить всё' : 'Включить всё');
+  if (needSvc() && !searching) {
+    setText($('#master-lbl'), svcBusy ? 'Установка…' : SVC.outdated ? 'Обновить службу' : SVC.installed ? 'Переустановить' : 'Установить службу');
+    mb.classList.remove('btn-danger'); mb.classList.add('btn-primary'); mb.classList.toggle('is-pending', svcBusy);
+  }
   for (const k of ['z', 't']) {
     const st = S[k], card = $('#card-' + k), sw = $('#sw-' + k), sub = $('.sub', card), em = $('em', sub);
     setAttr(card, 'data-state', st === 'pending' ? 'on' : st);
     setAttr($('.dot', sub), 'data-s', st === 'search' ? 'pending' : st);
     setText($('.st', sub), st === 'search' ? (BENCH.mode === 'one' ? 'Проверка стратегии…' : 'Подбор · ' + BENCH.tested + ' из ' + BENCH.total) : st === 'pending' ? (T[k] === 'on' ? 'Запуск…' : 'Остановка…') : st === 'on' ? 'Работает' : 'Выключен');
-    em.hidden = st !== 'on';
+    em.hidden = st !== 'on' || (k === 't' && TGCF);
+    if (k === 't') $('#t-err').hidden = st !== 'on' || !TGCF;
     if (k === 'z') setText(em, nm(appConfig ? appConfig.zapret.strategy : ''));
     else if (appConfig) setText(em, (appConfig.tg_proxy.host || '127.0.0.1') + ':' + appConfig.tg_proxy.port);
     setAttr(sw, 'aria-checked', st === 'pending' ? T[k] === 'on' : st === 'on'); sw.classList.toggle('is-pending', st === 'pending'); sw.disabled = st === 'search';
@@ -980,10 +1033,16 @@ async function pollStatus() {
   let d;
   try { d = await api('/api/status'); } catch (e) { return; }
   VERSION = d.version || VERSION; tgLink = d.tg_link || ''; svcState = d.zapret.service_state || '';
+  if (d.platform && d.platform !== PLATFORM) { PLATFORM = d.platform; applyPlatform(); }
+  VPNS = d.vpn || []; $('#vpn-badge').hidden = !VPNS.length; SVC = d.service || null;
   const b = d.benchmark || {};
   BENCH.running = !!b.running; BENCH.mode = b.mode || ''; BENCH.tested = b.tested || 0; BENCH.total = b.total || 0;
   if (S.z !== 'pending') S.z = BENCH.running ? 'search' : d.zapret.is_running ? 'on' : 'off';
   if (S.t !== 'pending') S.t = d.tg_proxy ? 'on' : 'off';
+  const cfb = !!d.tg_cf_blocked;
+  if (cfb && !TGCF) toast('Telegram-прокси не может подключиться: провайдер блокирует путь через Cloudflare', 'err', () => openTGFix(), 'Как исправить');
+  const cfChanged = cfb !== TGCF; TGCF = cfb;
+  if (cfChanged && D && D.k === 't') refreshTGFix();
   render();
   if (!UP.avail) { const v = $('#btn-version-badge'); setText(v, 'v' + VERSION); }
   setText($('#up-app-sub'), 'Zapretify v' + VERSION + ' · GitHub Releases');
@@ -1000,15 +1059,32 @@ async function apply(k, target) {
   catch (e) { toast(NAMES[k] + ': ' + e.message, 'err'); return false; }
   finally { S[k] = target; await pollStatus(); }
 }
+// Установка или обновление службы Zapretify (macOS): пароль спрашивает сама macOS.
+async function installSvc() {
+  if (svcBusy) return; svcBusy = true; render();
+  try { await post('/api/platform/install-service'); toast('Служба Zapretify установлена', 'ok'); }
+  catch (e) { toast(e.message === 'установка отменена' ? 'Установка службы отменена' : 'Служба: ' + e.message, e.message === 'установка отменена' ? 'info' : 'err'); }
+  finally { svcBusy = false; await pollStatus(); }
+}
 async function toggle(k) {
   if (S[k] === 'search') { openSearch(); return; }
+  if (k === 'z' && needSvc() && S.z !== 'on') { installSvc(); return; }
   const target = S[k] === 'on' ? 'off' : 'on';
-  if (await apply(k, target)) toast(NAMES[k] + (target === 'on' ? ' запущен' : ' остановлен'), 'ok');
+  if (await apply(k, target)) {
+    if (k === 'z' && target === 'on' && VPNS.length) vpnToast(NAMES[k] + ' запущен');
+    else toast(NAMES[k] + (target === 'on' ? ' запущен' : ' остановлен'), 'ok');
+  }
 }
+// Обход и VPN могут работать вместе, но так делать не стоит: предупреждаем при каждом запуске Zapret.
+function vpnToast(what) { toast(what + '. Включён VPN — работать вместе можно, но лучше его выключить', 'info', () => openHelp('vpn', { vpn_adapters: VPNS }), 'Подробнее'); }
 async function master() {
+  if (needSvc() && S.z !== 'search') { installSvc(); return; }
   const turnOff = S.z === 'on' || S.t === 'on', target = turnOff ? 'off' : 'on';
   const res = await Promise.all(['z', 't'].filter(k => S[k] !== target).map(k => apply(k, target)));
-  if (res.length && res.every(Boolean)) toast(turnOff ? 'Все службы остановлены' : 'Все службы запущены', 'ok');
+  if (res.length && res.every(Boolean)) {
+    if (!turnOff && S.z === 'on' && VPNS.length) vpnToast('Все службы запущены');
+    else toast(turnOff ? 'Все службы остановлены' : 'Все службы запущены', 'ok');
+  }
 }
 
 /* toast */
@@ -1019,6 +1095,7 @@ function toast(msg, kind = 'info', action, label) {
   t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), action ? 5500 : kind === 'err' ? 4500 : 2600);
 }
 $('#toast-undo').onclick = () => { if (undoFn) undoFn(); $('#toast').classList.remove('show'); };
+$('#vpn-badge').onclick = () => openHelp('vpn', { vpn_adapters: VPNS });
 
 /* ================= подбор и проверка стратегий ================= */
 const C = 364.4;
@@ -1075,7 +1152,7 @@ function setPhase() {
   if (p === 'error') { setArc(T0 ? n / Tt : 0, 'bad'); setText(l1, 'Ошибка'); setText($('#l2'), T0 ? 'проверено ' + n + ' из ' + T0 : ''); setCore('i-alert', ''); }
   const key = p === 'done' ? (SR.stopped && SR.tone === 'ok' ? 'stopped' : SR.tone) : p, c = CHIP[key] || CHIP[p], chip = $('#schip');
   chip.classList.toggle('show', !!c); if (c) { chip.dataset.t = c[0]; setText($('#schip-t'), c[1]); $('.dot', chip).style.display = c[0] === 'run' ? '' : 'none'; }
-  $('#err-lead').textContent = SR.err || (one ? 'Стратегия не запустилась: winws.exe завершился с ошибкой. Zapret возвращён в прежнее состояние.' : 'Подбор прервался: три запуска подряд не удались. Zapret возвращён в прежнее состояние.');
+  $('#err-lead').textContent = SR.err || (one ? pf('Стратегия не запустилась: winws.exe завершился с ошибкой. Zapret возвращён в прежнее состояние.', 'Стратегия не запустилась: служба Zapretify не смогла запустить движок. Zapret возвращён в прежнее состояние.') : 'Подбор прервался: три запуска подряд не удались. Zapret возвращён в прежнее состояние.');
 }
 function updateRun() {
   const [n, T0] = prog(), one = SR.mode === 'one', Tt = T0 || 1;
@@ -1152,7 +1229,7 @@ async function pollSearch() {
   await loadLast();
   setPhase(); renderLast(); syncMode();
   if (SR.phase === 'done') renderResult();
-  if (cur() !== 'search' && SR.phase !== 'idle') toast(SR.phase === 'error' ? 'Подбор прервался: winws не запускается' : 'Подбор завершён · ' + SR.best.name + ' · ' + SR.best.ok + ' из ' + SR.best.total, SR.phase === 'error' ? 'err' : 'ok', openSearch, 'Открыть');
+  if (cur() !== 'search' && SR.phase !== 'idle') toast(SR.phase === 'error' ? pf('Подбор прервался: winws не запускается', 'Подбор прервался: движок не запускается') : 'Подбор завершён · ' + SR.best.name + ' · ' + SR.best.ok + ' из ' + SR.best.total, SR.phase === 'error' ? 'err' : 'ok', openSearch, 'Открыть');
   pollStatus();
 }
 function computeResult() {
@@ -1185,7 +1262,7 @@ function renderResult() {
   $('#d-lead').innerHTML = SR.stopped ? 'Проверено <b>' + n + ' из ' + SR.total + '</b>. Лучшая из проверенных — ниже. ' + (tone === 'ok' ? '' : 'Результат неполный.') : {
     ok: 'Эта стратегия лучше остальных обходит блокировки на вашем подключении.',
     warn: 'Часть сервисов по-прежнему блокируется. Можно применить лучшую из проверенных или заглянуть в диагностику.',
-    bad: 'Ни одна стратегия не открыла большинство сервисов. Возможно, мешает другая программа или нужны права администратора.' }[tone];
+    bad: 'Ни одна стратегия не открыла большинство сервисов. ' + pf('Возможно, мешает другая программа или нужны права администратора.', 'Возможно, мешает VPN или другой обходчик (ZapretMac).') }[tone];
   setText($('#w-name'), best.name); $('#w-name').title = best.id;
   setText($('#w-m'), best.ok + ' из ' + best.total + (best.ms ? ' · ' + best.ms + ' мс' : ''));
   $('#w-cats').innerHTML = catsHTML(best.res); $('#w-fails').innerHTML = failsHTML(best.res);
@@ -1204,7 +1281,7 @@ function renderOne() {
   setText($('#d-title'), { ok: 'Стратегия работает', warn: 'Работает частично', bad: 'Стратегия не помогает' }[tone]);
   $('#d-lead').innerHTML = { ok: 'Большинство сервисов открывается. Можно применить её или сравнить с результатом полного подбора.',
     warn: 'Часть сервисов по-прежнему блокируется. Попробуйте другую стратегию или запустите полный подбор.',
-    bad: 'Почти ничего не открылось. Возможно, мешает другая программа или нужны права администратора.' }[tone];
+    bad: 'Почти ничего не открылось. ' + pf('Возможно, мешает другая программа или нужны права администратора.', 'Возможно, мешает VPN или другой обходчик (ZapretMac).') }[tone];
   setText($('#w-name'), s.name); $('#w-name').title = s.id;
   setText($('#w-m'), s.ok + ' из ' + s.total + (s.ms ? ' · ' + s.ms + ' мс' : ''));
   $('#w-cats').innerHTML = catsHTML(s.res); $('#w-fails').innerHTML = failsHTML(s.res);
@@ -1346,7 +1423,7 @@ const portsOk = s => /^\d{1,5}(-\d{1,5})?(,\d{1,5}(-\d{1,5})?)*$/.test(s) && s.s
 const SECRET_RE = /^[0-9a-f]{32}$/i;
 const svcInstalled = () => svcState === 'RUNNING' || svcState === 'STOPPED';
 const CFG = {
-  z: () => ({ strategy: appConfig.zapret.strategy, service: !!(appConfig.zapret.autostart_service || appConfig.zapret.service_mode) || svcInstalled(),
+  z: () => ({ strategy: appConfig.zapret.strategy, boot: !!appConfig.zapret.boot_start, service: !!(appConfig.zapret.autostart_service || appConfig.zapret.service_mode) || svcInstalled(),
     game: appConfig.zapret.game_filter_mode || 'disabled', tcp: appConfig.zapret.game_filter_tcp || '1024-65535', udp: appConfig.zapret.game_filter_udp || '1024-65535', ipset: appConfig.zapret.ipset_mode || 'none' }),
   t: () => ({ port: String(appConfig.tg_proxy.port || 1443), secret: appConfig.tg_proxy.secret || '', autostart: !!appConfig.tg_proxy.autostart }),
   a: () => ({ autostart_app: !!appConfig.app.autostart_app, start_minimized: !!appConfig.app.start_minimized, auto_update_assets: !!appConfig.app.auto_update_assets }),
@@ -1361,9 +1438,10 @@ const SCHEMA = {
     validate: v => { const o = {}; if (v.game !== 'disabled') { if (!portsOk(v.tcp)) o.tcp = 'TCP: формат 1024-65535 или 80,443'; if (!portsOk(v.udp)) o.udp = 'UDP: формат 1024-65535 или 80,443'; } return o; },
     fields: [
       { k: 'strategy', type: 'select', label: 'Стратегия обхода', hint: 'auto', opts: () => STRATS.map(s => [s.id, s.name]) },
-      { k: 'service', type: 'switch', label: 'Запускать как службу Windows', hint: 'Обход работает с включения ПК, даже без открытого приложения' },
-      { k: 'game', adv: 1, type: 'select', label: 'Game Filter', hint: 'Discord Voice и онлайн-игры', opts: () => [['disabled', 'Отключен (по умолчанию)'], ['udp', 'Только UDP [Рекомендуется]'], ['tcp', 'Только TCP'], ['all', 'Полный (TCP и UDP)']] },
-      { type: 'ports', adv: 1, label: 'Диапазоны портов игры', hint: 'TCP и UDP (Voice). Например: 1024-65535' },
+      { k: 'boot', onlyMac: 1, type: 'switch', label: 'Включать обход при загрузке Mac', hint: 'Служба Zapretify запустит Zapret с выбранной стратегией сразу после включения компьютера, даже без открытого приложения' },
+      { k: 'service', win: 1, type: 'switch', label: 'Запускать как службу Windows', hint: 'Обход работает с включения ПК, даже без открытого приложения' },
+      { k: 'game', adv: 1, win: 1, type: 'select', label: 'Game Filter', hint: 'Discord Voice и онлайн-игры', opts: () => [['disabled', 'Отключен (по умолчанию)'], ['udp', 'Только UDP [Рекомендуется]'], ['tcp', 'Только TCP'], ['all', 'Полный (TCP и UDP)']] },
+      { type: 'ports', adv: 1, win: 1, label: 'Диапазоны портов игры', hint: 'TCP и UDP (Voice). Например: 1024-65535' },
       { k: 'ipset', adv: 1, type: 'select', label: 'Режим IPSet списков', opts: () => [['none', 'Выключен (none)'], ['loaded', 'Загружен (loaded)'], ['any', 'Любой IP (any)']] }] },
   t: { title: 'Telegram', tone: 'teal', icon: 'i-send', advLabel: 'Задержка до дата-центров', advIcon: 'i-activity',
     validate: v => { const o = {};
@@ -1372,17 +1450,20 @@ const SCHEMA = {
     fields: [{ type: 'pair', label: 'Адрес и порт прокси', hint: 'Прокси принимает подключения только с этого компьютера' },
       { type: 'secret', label: 'Секретный ключ (Fake TLS)' },
       { k: 'autostart', type: 'switch', label: 'Запускать вместе с приложением' },
+      { type: 'tgfix' },
       { type: 'dc', adv: 1, label: 'Задержка до дата-центров' }] },
   a: { title: 'Приложение', tone: 'indigo', icon: 'i-gear',
-    fields: [{ k: 'autostart_app', type: 'switch', label: 'Открывать Zapretify при входе в Windows', hint: 'Через планировщик задач, без запроса UAC' },
-      { k: 'start_minimized', type: 'switch', label: 'Запускать свёрнутым в трей', hint: 'Окно не появляется при автозапуске; открыть его можно из трея' },
+    fields: [{ k: 'autostart_app', type: 'switch', label: 'Открывать Zapretify при входе в Windows', hint: 'Через планировщик задач, без запроса UAC',
+        mac: { label: 'Открывать Zapretify при входе в систему', hint: 'Через объекты входа macOS (LaunchAgent)' } },
+      { k: 'start_minimized', type: 'switch', label: 'Запускать свёрнутым в трей', hint: 'Окно не появляется при автозапуске; открыть его можно из трея',
+        mac: { label: 'Запускать без окна', hint: 'При автозапуске остаётся только значок в строке меню; окно открывается из него' } },
       { k: 'auto_update_assets', type: 'switch', label: 'Обновлять базы Flowseal при запуске', hint: 'Стратегии, списки и IP-лист; ваши списки не меняются' }] },
 };
 let D = null;
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function dlgSub() {
   if (!D) return '';
-  if (D.k === 'z') return 'Режим: ' + (svcInstalled() ? 'системная служба Windows' : 'процесс winws.exe') + ' · ' + (S.z === 'on' ? 'работает' : S.z === 'search' ? 'идёт проверка' : 'остановлен');
+  if (D.k === 'z') return 'Режим: ' + (MAC() ? 'служба Zapretify' : svcInstalled() ? 'системная служба Windows' : 'процесс winws.exe') + ' · ' + (S.z === 'on' ? 'работает' : S.z === 'search' ? 'идёт проверка' : 'остановлен');
   if (D.k === 't') return 'Локальный MTProto WebSocket-мост · Fake TLS';
   return 'Zapretify v' + VERSION;
 }
@@ -1401,6 +1482,7 @@ function rowHTML(f) {
   }
   if (f.type === 'ports') return '<div class="row col" data-ports>' + t + '<div class="pair2"><input class="inp mono" data-k="tcp" aria-label="TCP порты" placeholder="TCP 1024-65535" autocomplete="off"><input class="inp mono" data-k="udp" aria-label="UDP порты" placeholder="UDP 1024-65535" autocomplete="off"></div><div class="ferr" data-e="tcp udp" hidden></div></div>';
   if (f.type === 'secret') return '<div class="row col">' + t + '<div class="selrow"><input class="inp mono key" type="password" data-k="secret" readonly aria-label="Секретный ключ"><button class="ib" data-eye aria-label="Показать ключ" title="Показать ключ">' + ico('i-eye') + '</button><button class="btn btn-ghost" data-gen>' + ico('i-refresh') + 'Сгенерировать</button></div><div class="ferr" data-e="secret" hidden></div><div class="sdesc" id="sec-note" hidden>После смены ключа заново добавьте прокси в Telegram: кнопка «Открыть в Telegram» на главном экране.</div></div>';
+  if (f.type === 'tgfix') return '<div class="row tgfix" id="tg-fix">' + tgFixHTML() + '</div>';
   if (f.type === 'dc') return '<div class="dcw"><div class="dc-h"><span>Замер до серверов Telegram</span><button class="btn btn-ghost btn-sm" data-dcping><i class="spin"></i><span>Замерить пинг</span></button></div><div id="dc-t">' + dcHTML() + '</div></div>';
   return '<div class="row col">' + t + '<div class="pair"><input class="inp mono" value="127.0.0.1" readonly tabindex="-1" aria-label="Адрес (только этот компьютер)" title="Прокси слушает только локальный адрес"><input class="inp mono" data-k="port" inputmode="numeric" autocomplete="off" aria-label="Порт"></div><div class="ferr" data-e="port" hidden></div></div>';
 }
@@ -1425,10 +1507,12 @@ function buildDlg() {
   const sc = SCHEMA[D.k]; $('#dlg-title').textContent = sc.title;
   const ch = $('#dlg-chip'), tn = sc.tone === 'teal' ? ['--teal', '--teal-soft', '--teal-line'] : ['--indigo', '--indigo-soft', '--indigo-line'];
   ch.style.cssText = '--c:var(' + tn[0] + ');--c-soft:var(' + tn[1] + ');--c-line:var(' + tn[2] + ')'; $('use', ch).setAttribute('href', '#' + sc.icon);
-  const main = sc.fields.filter(f => !f.adv).map(rowHTML).join(''), adv = sc.fields.filter(f => f.adv).map(rowHTML).join('');
+  const fields = sc.fields.filter(f => !(f.win && MAC()) && !(f.onlyMac && !MAC())).map(f => MAC() && f.mac ? Object.assign({}, f, f.mac) : f);
+  const main = fields.filter(f => !f.adv).map(rowHTML).join(''), adv = fields.filter(f => f.adv).map(rowHTML).join('');
   const db = $('#dlg-body'); db.classList.remove('onadv'); db.classList.toggle('has-adv', !!adv); setText($('#dlg-sub'), dlgSub());
   db.innerHTML = '<div class="pane main">' + main + (adv ? '<button class="navrow" id="adv-go">' + ico(sc.advIcon || 'i-gear') + '<span class="grow">' + (sc.advLabel || 'Дополнительно') + '</span>' + ico('i-chev', 'g-chev') + '</button>' : '') + '</div>'
     + (adv ? '<div class="pane adv"><button class="link back" id="adv-back">' + ico('i-left', 'g-left') + 'Назад</button>' + adv + '</div>' : '');
+  refreshTGFix();
   syncControls();
 }
 function syncControls() {
@@ -1448,6 +1532,42 @@ function syncControls() {
   $('#dlg-reset').style.visibility = same(D.vals, DEFAULTS[D.k]()) ? 'hidden' : 'visible';
 }
 function clearErr() { const f = $('#dlg-f'); if (f.classList.contains('has-err')) { f.classList.remove('has-err'); setText($('#save-lbl'), 'Сохранить'); } }
+// Блок «Если Telegram не подключается» в настройках прокси: провайдер может блокировать путь через
+// Cloudflare (kws*.pclead.co.uk) и прямые адреса Telegram — тогда помогает Zapret с IPSet «loaded».
+function tgFixHTML() {
+  const ip = appConfig.zapret.ipset_mode || 'none', z = S.z === 'on';
+  return '<div class="row-t"><b>' + (TGCF ? 'Ошибка: провайдер блокирует Telegram-прокси' : 'Если Telegram не подключается') + '</b>' +
+    '<span>' + (TGCF ? 'Путь через Cloudflare и прямые адреса Telegram сейчас недоступны.' : 'Некоторые провайдеры блокируют путь прокси через Cloudflare и прямые адреса Telegram.') + '</span></div>' +
+    '<p>Решение — пусть Zapret обходит блокировку и для прокси:</p><ol>' +
+    '<li><b>IPSet «loaded»</b> — Zapret начнёт обрабатывать подсети Cloudflare из базы Flowseal' + (ip === 'none' ? '' : ' (сейчас IPSet: ' + esc(ip) + ')') + '.</li>' +
+    '<li>Или добавьте домен <b>pclead.co.uk</b> в «Мои сайты» — Zapret будет обходить только его.</li></ol>' +
+    (z ? '' : '<p><b>Zapret сейчас выключен</b> — включите его, иначе ни один способ не сработает.</p>') +
+    '<div class="acts">' + (ip === 'none' ? '<button class="btn btn-primary btn-sm" data-tgfix><i class="spin"></i><span>Включить IPSet «loaded»</span></button>' : '') +
+    '<button class="btn btn-ghost btn-sm" data-tgdomain><i class="spin"></i><span>Добавить pclead.co.uk в «Мои сайты»</span></button>' +
+    '<button class="link" data-tghelp>Подробнее</button></div>';
+}
+function refreshTGFix() { const b = $('#tg-fix'); if (!b) return; b.innerHTML = tgFixHTML(); b.classList.toggle('bad', TGCF); }
+async function enableIPSetLoaded() {
+  const old = CFG.z(), msg = await SAVE.z(Object.assign({}, old, { ipset: 'loaded' }), old);
+  toast(S.z === 'on' ? msg : 'IPSet «loaded» включён — теперь включите Zapret', 'ok');
+}
+// Добавляет домен Telegram-прокси в «Мои сайты» и перезапускает Zapret, чтобы список применился.
+const TG_CF_DOMAIN = 'pclead.co.uk', USER_LIST = 'list-general-user.txt';
+async function addTGDomain() {
+  const d = await api('/api/lists?file=' + USER_LIST), cur = d.content || '';
+  if (cur.split(/\r?\n/).some(l => l.trim().toLowerCase() === TG_CF_DOMAIN)) { toast(TG_CF_DOMAIN + ' уже есть в «Моих сайтах»', 'info'); return; }
+  const r = await post('/api/lists?file=' + USER_LIST, { content: cur.replace(/\s*$/, '\n') + TG_CF_DOMAIN + '\n' });
+  if (LS[USER_LIST]) { LS[USER_LIST].saved = LS[USER_LIST].draft = r.content != null ? r.content : LS[USER_LIST].draft; }
+  if (S.z === 'on') {
+    await restarting('z', async () => { await post('/api/zapret/stop'); await post('/api/zapret/start?strategy=' + encodeURIComponent(appConfig.zapret.strategy)); });
+    toast(TG_CF_DOMAIN + ' добавлен в «Мои сайты» · Zapret перезапущен', 'ok');
+  } else toast(TG_CF_DOMAIN + ' добавлен в «Мои сайты» — теперь включите Zapret', 'ok');
+}
+function openTGFix() {
+  if (!D || D.k !== 't') openDlg('t');
+  refreshTGFix();
+  setTimeout(() => { const b = $('#tg-fix'); if (!b) return; b.scrollIntoView({ behavior: 'smooth', block: 'center' }); b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }, 180);
+}
 function openDlg(k) {
   if (!appConfig) return;
   if (k === 'z' && S.z === 'search') { openSearch(); return; }
@@ -1467,6 +1587,11 @@ body.addEventListener('click', e => {
   const gen = e.target.closest('[data-gen]');
   if (gen && !D.saving) { const by = new Uint8Array(16); crypto.getRandomValues(by); D.vals.secret = Array.from(by, x => x.toString(16).padStart(2, '0')).join(''); gen.classList.remove('spun'); void gen.offsetWidth; gen.classList.add('spun'); clearErr(); syncControls(); toast('Новый ключ сгенерирован'); }
   if (e.target.closest('[data-dcping]')) pingDCs();
+  if (e.target.closest('[data-tghelp]')) openHelp('tgcf');
+  const td = e.target.closest('[data-tgdomain]');
+  if (td && !td.classList.contains('is-pending')) { td.classList.add('is-pending'); addTGDomain().catch(err => toast(err.message, 'err')).finally(() => td.classList.remove('is-pending')); }
+  const fx = e.target.closest('[data-tgfix]');
+  if (fx && !fx.classList.contains('is-pending')) { fx.classList.add('is-pending'); enableIPSetLoaded().catch(err => toast(err.message, 'err')).finally(() => refreshTGFix()); }
   if (e.target.closest('[data-check]') && !D.saving) { const id = D.vals.strategy; closeDlg(false); setTimeout(() => checkOne(id), 250); }
 });
 body.addEventListener('input', e => { const k = e.target.dataset.k; if (D && k && !D.saving) { D.vals[k] = e.target.value; clearErr(); syncControls(); } });
@@ -1485,6 +1610,11 @@ const SAVE = {
     const filtersChanged = old.game !== v.game || old.tcp !== v.tcp || old.udp !== v.udp;
     const changed = old.strategy !== v.strategy || filtersChanged || old.ipset !== v.ipset;
     if (old.ipset !== v.ipset) await post('/api/zapret/ipset-mode?mode=' + encodeURIComponent(v.ipset));
+    if (MAC() && (old.boot !== v.boot || (v.boot && old.strategy !== v.strategy))) {
+      await post('/api/zapret/boot?enabled=' + (v.boot ? 1 : 0));
+      await saveConfig(c => { c.zapret.boot_start = v.boot; });
+      if (old.boot !== v.boot && !changed) return v.boot ? 'Обход будет включаться при загрузке Mac' : 'Обход при загрузке Mac выключен';
+    }
     await saveConfig(c => { Object.assign(c.zapret, { strategy: v.strategy, game_filter_mode: v.game, game_filter_tcp: v.tcp, game_filter_udp: v.udp, ipset_mode: v.ipset, autostart_service: v.service, service_mode: v.service }); });
     if (old.service !== v.service) {
       if (v.service) {
@@ -1693,12 +1823,20 @@ $('#ls-add').onclick = addDomain; $('#ls-q').onkeydown = e => { if (e.key === 'E
 
 /* ================= диагностика ================= */
 const DG = { d: null, loaded: false, busy: false };
-const dgItems = () => { const d = DG.d || {}; return [
+const dgItems = () => { const d = DG.d || {}; if (MAC()) return dgItemsMac(d); return [
   { t: 'Права администратора', v: d.is_admin ? 'Есть — полный доступ' : 'Нет — часть функций недоступна', s: d.is_admin ? 'ok' : 'warn', a: d.is_admin ? null : ['От админа', 'admin'] },
   { t: 'Конфликт с GoodbyeDPI', v: d.goodbyedpi_running ? 'Обнаружен — закройте GoodbyeDPI' : 'Не обнаружен', s: d.goodbyedpi_running ? 'bad' : 'ok' },
   { t: 'Драйвер WinDivert', v: d.windivert_exists ? 'Все файлы найдены в bin/' : 'Файлы не найдены в bin/', s: d.windivert_exists ? 'ok' : 'bad' },
   { t: 'TCP Timestamps', v: d.tcp_timestamps_ok ? 'Включены — оптимально' : 'Выключены — лучше включить', s: d.tcp_timestamps_ok ? 'ok' : 'warn', a: d.tcp_timestamps_ok ? null : ['Включить', 'tcp'] },
-  dgForeign(d), dgVPN(d), dgDNS(d)]; };
+  dgForeign(d), dgVPN(d), dgDNS(d), dgDoH(d)]; };
+// macOS: вместо прав, WinDivert и TCP Timestamps — служба Zapretify и чужие движки.
+function dgItemsMac(d) {
+  const es = d.engine_service, ok = es === '' || es === undefined && !DG.loaded, n = (d.foreign_winws || []).length;
+  return [
+    { t: 'Служба Zapretify', v: ok ? 'Установлена и работает' : 'Не отвечает — обход не запустится', s: ok ? 'ok' : 'bad', h: ok ? null : 'svc' },
+    { t: 'Другой обходчик', v: n ? 'Запущен ZapretMac или другой utunws' : 'Не обнаружен', s: n ? 'bad' : 'ok', h: n ? 'winws' : null },
+    dgVPN(d), dgDNS(d), dgDoH(d)];
+}
 function dgForeign(d) {
   const n = (d.foreign_winws || []).length;
   return { t: 'Сторонний winws.exe', v: n ? (n > 1 ? 'Запущено ' + n + ' из других папок' : 'Запущен из другой папки') : 'Не обнаружен', s: n ? 'bad' : 'ok', h: n ? 'winws' : null };
@@ -1712,11 +1850,17 @@ function dgDNS(d) {
   if (DG.loaded && !x.checked) return { t: 'Подмена DNS', v: 'Не проверено — зашифрованный DNS недоступен', s: 'ok' };
   return { t: 'Подмена DNS', v: sp.length ? 'Подменяется: ' + sp.map(z => z.domain).join(', ') : 'Не обнаружена', s: sp.length ? 'warn' : 'ok', h: sp.length ? 'dns' : null };
 }
-const dgProblems = () => DG.loaded ? dgItems().filter(x => x.s !== 'ok').length : 0;
+function dgDoH(d) {
+  const e = d.encrypted_dns || {}, spoofed = ((d.dns || {}).spoofed || []).length > 0;
+  const v = e.enabled ? 'Включён' + (e.via ? ' — ' + e.via : '') : !e.checked ? (DG.loaded ? 'Не удалось проверить' : 'Не проверено')
+    : spoofed ? 'Выключен — нужен, провайдер подменяет DNS' : 'Выключен — рекомендуется включить';
+  return { t: 'Зашифрованный DNS (DoH)', v, s: e.enabled ? 'ok' : spoofed ? 'warn' : 'info', h: 'doh', hl: e.enabled ? 'Подробнее' : 'Как включить' };
+}
+const dgProblems = () => DG.loaded ? dgItems().filter(x => x.s === 'warn' || x.s === 'bad').length : 0;
 function drawDiag(running) {
   // Сначала ошибки, потом предупреждения: проблемы не должны прятаться под прокруткой.
-  const rank = { bad: 0, warn: 1, ok: 2 }, items = running ? dgItems() : dgItems().sort((a, b) => rank[a.s] - rank[b.s]);
-  $('#dg-list').innerHTML = items.map((x, i) => '<div class="ck' + (running ? '' : ' in') + '" data-s="' + (running ? 'run' : x.s) + '" style="--i:' + i + '"><span class="ci">' + (running ? '<i></i>' : ico(x.s === 'ok' ? 'i-check' : x.s === 'warn' ? 'i-bang' : 'i-x')) + '</span><div class="ct"><b>' + x.t + '</b><span>' + (running ? 'Проверяю…' : x.v) + '</span></div>' + (!running && x.a ? '<button class="btn btn-ghost btn-sm" data-fix="' + x.a[1] + '"><i class="spin"></i><span>' + x.a[0] + '</span></button>' : '') + (!running && x.h ? '<button class="btn btn-ghost btn-sm" data-help="' + x.h + '">Как исправить</button>' : '') + '</div>').join('');
+  const rank = { bad: 0, warn: 1, info: 2, ok: 3 }, items = running ? dgItems() : dgItems().sort((a, b) => rank[a.s] - rank[b.s]);
+  $('#dg-list').innerHTML = items.map((x, i) => '<div class="ck' + (running ? '' : ' in') + '" data-s="' + (running ? 'run' : x.s) + '" style="--i:' + i + '"><span class="ci">' + (running ? '<i></i>' : ico(x.s === 'ok' ? 'i-check' : x.s === 'warn' ? 'i-bang' : x.s === 'info' ? 'i-info' : 'i-x')) + '</span><div class="ct"><b>' + x.t + '</b><span>' + (running ? 'Проверяю…' : x.v) + '</span></div>' + (!running && x.a ? '<button class="btn btn-ghost btn-sm" data-fix="' + x.a[1] + '"><i class="spin"></i><span>' + x.a[0] + '</span></button>' : '') + (!running && x.h ? '<button class="btn btn-ghost btn-sm" data-help="' + x.h + '">' + (x.hl || 'Как исправить') + '</button>' : '') + '</div>').join('');
   const chip = $('#dg-chip'), n = dgProblems(), bad = dgItems().some(x => x.s === 'bad');
   chip.classList.toggle('show', !running && DG.loaded); chip.dataset.t = n === 0 ? 'ok' : bad ? 'bad' : 'warn'; $('.dot', chip).style.display = 'none';
   setText($('#dg-chip-t'), n === 0 ? 'Всё в порядке' : n + ' ' + plural(n, 'замечание', 'замечания', 'замечаний'));
@@ -1743,9 +1887,29 @@ $('#dg-list').onclick = async e => {
   loadDiag();
 };
 /* окно «Как исправить»: суть проблемы и шаги */
+// Как включить зашифрованный DNS: общая часть окон «Подмена DNS» и «Зашифрованный DNS».
+const dohSteps = () => '<ol>' + (MAC()
+        ? '<li>Откройте <a href="https://github.com/paulmillr/encrypted-dns" target="_blank" rel="noopener">github.com/paulmillr/encrypted-dns</a> и в таблице профилей скачайте <b>Cloudflare</b> или <b>Google</b> в варианте <b>HTTPS</b> (файл .mobileconfig).</li>' +
+          '<li>Откройте скачанный файл — macOS сообщит, что профиль загружен.</li>' +
+          '<li>Системные настройки → Основные → <b>Управление устройствами</b> (в старых версиях — «Профили») → выберите профиль → <b>Установить</b> и введите пароль Mac.</li>' +
+          '<li>Перезапустите браузер и обновите диагностику — здесь появится «Включён».</li></ol>' +
+          '<p>Если профиль поставить не получается: Системные настройки → Сеть → Wi-Fi → Подробнее → DNS, добавьте <b>1.1.1.1</b> и <b>1.0.0.1</b>. Это проще, но такой DNS не зашифрован, и провайдер может перехватывать его.</p>'
+        : '<li><b>Windows 11:</b> Параметры → Сеть и Интернет → ваше подключение (Ethernet или Wi-Fi) → «Назначение DNS-сервера» → Изменить → Вручную. Для IPv4 укажите <b>1.1.1.1</b> и <b>1.0.0.1</b>, в «Шифровании DNS» выберите «Только зашифрованные (DNS по HTTPS)».</li>' +
+        '<li><b>Windows 10</b> системное шифрование DNS не умеет — включите его в браузере. Chrome, Edge, Яндекс: Настройки → Конфиденциальность и безопасность → «Использовать безопасный DNS» → Cloudflare. Firefox: Настройки → Приватность → «DNS через HTTPS».</li>' +
+        '<li>Перезапустите браузер и обновите диагностику.</li></ol>');
 const HELP = {
+  svc: d => ({ tone: 'bad', title: 'Служба Zapretify не отвечает', sub: 'Без неё обход блокировок не запустится',
+    body: '<h4>Что происходит</h4><p>Приложение не может связаться со службой Zapretify (zapretifyd). Она работает от имени администратора и запускает движок обхода.</p>' +
+      '<div class="kv"><div>' + esc(d.engine_service || '') + '</div></div>' +
+      '<h4>Как исправить</h4><ol><li>Нажмите <b>«Установить службу»</b> ниже и введите пароль Mac. Если служба уже была установлена, она переустановится.</li><li>Обновите диагностику, чтобы проверить ещё раз.</li></ol>',
+    act: ['Установить службу', async () => { await installSvc(); loadDiag(); }] }),
   winws: d => {
     const p = d.foreign_winws || [], n = p.length;
+    if (MAC()) return { tone: 'bad', title: 'Запущен другой обходчик', sub: 'Два движка не могут работать одновременно',
+      body: '<h4>Что происходит</h4><p>Кроме Zapretify в системе работает движок utunws — обычно это ZapretMac от Flowseal:</p>' +
+        '<div class="kv">' + p.map(x => '<div>PID ' + x.pid + ' · ' + esc(x.path || 'путь недоступен') + '</div>').join('') + '</div>' +
+        '<h4>Почему это мешает</h4><p>Оба движка перехватывают один и тот же трафик. Служба Zapretify не запускает свой движок, пока работает чужой.</p>' +
+        '<h4>Как исправить</h4><ol><li>В меню ZapretMac (значок в строке меню) нажмите <b>«Остановить»</b>.</li><li>Если не помогло — в Терминале: <b>sudo "/Library/Application Support/ZapretMac/stop.sh"</b></li><li>Обновите диагностику и запустите Zapret снова.</li></ol>' };
     return { tone: 'bad', title: 'Запущен сторонний winws.exe', sub: 'Другая копия zapret обрабатывает тот же трафик',
       body: '<h4>Что происходит</h4><p>Кроме Zapretify в системе работает ' + n + ' ' + plural(n, 'процесс', 'процесса', 'процессов') + ' winws.exe из другой папки — например, батники Flowseal (general.bat, service.bat) или старая копия Zapretify.</p>' +
         '<div class="kv">' + p.map(x => '<div>PID ' + x.pid + ' · ' + esc(x.path || 'путь недоступен') + '</div>').join('') + '</div>' +
@@ -1754,11 +1918,40 @@ const HELP = {
       act: ['Завершить процессы', async () => { const r = await post('/api/platform/kill-foreign-winws'); toast(r.killed ? 'Завершено процессов: ' + r.killed : 'Не удалось завершить — нужны права администратора', r.killed ? 'ok' : 'err'); }] };
   },
   vpn: d => {
-    const a = d.vpn_adapters || [];
-    return { tone: 'warn', title: 'Активен VPN или TUN-адаптер', sub: 'Трафик может идти в обход Zapret',
-      body: '<h4>Что происходит</h4><p>В системе подключены сетевые адаптеры VPN или прокси-клиента в режиме TUN:</p><div class="kv">' + a.map(x => '<div>' + esc(x) + '</div>').join('') + '</div>' +
-        '<h4>Почему это мешает</h4><p>Трафик, который уходит в VPN-туннель, шифруется раньше, чем его видит Zapret, — стратегии на него не действуют. Некоторые TUN-клиенты (sing-box, Clash, Hiddify) к тому же конфликтуют с драйвером WinDivert.</p>' +
-        '<h4>Как исправить</h4><ol><li>Если сайты открываются — ничего делать не нужно: VPN может работать только для отдельных приложений.</li><li>Если не открываются — отключите VPN или выключите в клиенте режим <b>TUN</b> («весь трафик через VPN»).</li><li>Перезапустите Zapret и обновите диагностику.</li></ol>' };
+    const a = d.vpn_adapters || [], mac = PLATFORM === 'darwin';
+    return { tone: 'warn', title: 'Включён VPN', sub: 'Работать вместе можно, но не желательно',
+      body: '<h4>Что происходит</h4><p>В системе работает VPN или прокси-клиент в режиме TUN:</p><div class="kv">' + a.map(x => '<div>' + esc(x) + '</div>').join('') + '</div>' +
+        (mac
+          ? '<h4>Как Zapretify работает с ним</h4><p>Zapret обходит блокировки только для трафика, который идёт мимо VPN — напрямую через Wi-Fi или Ethernet. То, что идёт через VPN, Zapretify не трогает, поэтому интернет не ломается.</p>'
+          : '<h4>Как Zapretify работает с ним</h4><p>Трафик, который уходит в VPN-туннель, шифруется раньше, чем его видит Zapret, — стратегии на него не действуют. Работает обход только для того, что идёт мимо VPN. Некоторые TUN-клиенты (sing-box, Clash, Hiddify) к тому же конфликтуют с драйвером WinDivert.</p>') +
+        '<h4>Почему это не желательно</h4><ul><li>Если YouTube и Discord идут через VPN, их открывает VPN, а не Zapret — стратегии на них не влияют.</li>' +
+        '<li>Когда VPN переподключается или меняет маршруты, сайты могут то открываться, то нет, и трудно понять, кто виноват.</li>' +
+        '<li>Проверка стратегий и автоподбор при включённом VPN показывают неверный результат.</li></ul>' +
+        '<h4>Как лучше</h4><ol><li>Для обхода блокировок выключите VPN — Zapretify справится сам.</li>' +
+        '<li>Если VPN нужен для другого, настройте в клиенте раздельную маршрутизацию и пустите YouTube и Discord напрямую — их будет обходить Zapretify.</li>' +
+        '<li>Перед проверкой или подбором стратегии выключайте VPN.</li></ol>' };
+  },
+  doh: d => {
+    const e = d.encrypted_dns || {}, sp = ((d.dns || {}).spoofed || []).length > 0;
+    return { tone: e.enabled ? 'ok' : sp ? 'warn' : 'info', title: 'Зашифрованный DNS (DoH)', sub: e.enabled ? 'Включён — провайдер не видит и не подменяет DNS' : 'Защищает от подмены сайтов провайдером',
+      body: '<h4>Зачем это нужно</h4><p>Прежде чем открыть сайт, компьютер спрашивает у DNS-сервера его адрес. Обычно этим сервером управляет провайдер: он видит, какие сайты вы открываете, и может вернуть адрес заглушки или «такого сайта нет». Тогда сайт не откроется ни с одной стратегией — Zapret обходит блокировку соединения, а не подмену адреса.</p>' +
+        '<p>Зашифрованный DNS (DNS over HTTPS) отправляет эти запросы в Cloudflare или Google по защищённому соединению. Провайдер не может ни прочитать, ни подменить ответ. Скорость интернета от этого не меняется.</p>' +
+        '<h4>Сейчас</h4><div class="kv"><div>' + (e.enabled ? 'Включён' + (e.via ? ': ' + esc(e.via) : '') : e.checked ? 'Системный зашифрованный DNS не настроен' : 'Проверить не удалось') +
+        (sp ? '<br>Провайдер подменяет: ' + esc(d.dns.spoofed.map(x => x.domain).join(', ')) : '') + '</div></div>' +
+        (e.enabled ? '<p>Ничего делать не нужно. Если сайты всё равно не открываются, причина не в DNS — попробуйте другую стратегию.</p>'
+          : '<h4>Как включить</h4>' + dohSteps()),
+      act: ['Открыть настройки сети', async () => { await post('/api/platform/network-settings'); }] };
+  },
+  tgcf: () => {
+    const z = S.z === 'on', ip = appConfig.zapret.ipset_mode || 'none';
+    return { tone: 'warn', title: 'Провайдер блокирует Telegram-прокси', sub: 'Путь через Cloudflare и прямые адреса Telegram недоступны',
+      body: '<h4>Что происходит</h4><p>Telegram-прокси подключается к серверам Telegram через Cloudflare (<b>kws*.pclead.co.uk</b>), а если не выходит — напрямую. Сейчас провайдер обрывает оба пути, поэтому Telegram не подключается.</p>' +
+        '<h4>Как исправить</h4><p>Пусть Zapret обходит блокировку и для прокси. Для этого нужен один из способов:</p>' +
+        '<ol><li><b>IPSet «loaded»</b> — Zapret начнёт обрабатывать подсети Cloudflare из базы Flowseal. Кнопка ниже включит его' + (z ? ' и перезапустит Zapret' : '') + '. Если какой-то сайт на Cloudflare после этого начнёт открываться хуже, верните «Выключен (none)» в настройках Zapret.</li>' +
+        '<li>Или добавьте домен <b>pclead.co.uk</b> в «Списки доменов» → «Мои сайты» — Zapret будет обходить только его.</li></ol>' +
+        (z ? '' : '<p><b>Zapret сейчас выключен</b> — включите его, иначе ни один способ не сработает.</p>') +
+        '<div class="kv"><div>Сейчас: IPSet ' + esc(ip) + ' · Zapret ' + (z ? 'включён' : 'выключен') + '</div></div>',
+      act: ip !== 'none' ? null : ['Включить IPSet «loaded»', async () => { await enableIPSetLoaded(); closeHelp(); refreshTGFix(); }] };
   },
   dns: d => {
     const sp = (d.dns || {}).spoofed || [];
@@ -1766,17 +1959,14 @@ const HELP = {
       body: '<h4>Что происходит</h4><p>Системный DNS отвечает на запросы о заблокированных сайтах не так, как зашифрованный DNS Cloudflare и Google, который провайдер изменить не может:</p>' +
         '<div class="kv">' + sp.map(x => '<div><b>' + esc(x.domain) + '</b> — ' + esc(x.reason) + '<br>система: ' + esc((x.system || []).join(', ') || 'нет ответа') + '<br>на самом деле: ' + esc((x.secure || []).join(', ')) + '</div>').join('') + '</div>' +
         '<h4>Почему это мешает</h4><p>Zapret маскирует соединение с настоящим сервером, а из-за подмены браузер подключается к заглушке провайдера или не находит сайт вовсе. Смена стратегии здесь не поможет.</p>' +
-        '<h4>Как исправить</h4><p>Включите зашифрованный DNS — его провайдер подменить не сможет.</p><ol>' +
-        '<li><b>Windows 11:</b> Параметры → Сеть и Интернет → ваше подключение (Ethernet или Wi-Fi) → «Назначение DNS-сервера» → Изменить → Вручную. Для IPv4 укажите <b>1.1.1.1</b> и <b>1.0.0.1</b>, в «Шифровании DNS» выберите «Только зашифрованные (DNS по HTTPS)».</li>' +
-        '<li><b>Windows 10</b> системное шифрование DNS не умеет — включите его в браузере. Chrome, Edge, Яндекс: Настройки → Конфиденциальность и безопасность → «Использовать безопасный DNS» → Cloudflare. Firefox: Настройки → Приватность → «DNS через HTTPS».</li>' +
-        '<li>Перезапустите браузер и обновите диагностику.</li></ol>',
+        '<h4>Как исправить</h4><p>Включите зашифрованный DNS — его провайдер подменить не сможет.</p>' + dohSteps(),
       act: ['Открыть настройки сети', async () => { await post('/api/platform/network-settings'); }] };
   }
 };
 let HLP = null;
-function openHelp(k) {
-  const h = HELP[k](DG.d || {}); HLP = h;
-  const c = { bad: ['--red', 'i-alert'], warn: ['--amber', 'i-bang'] }[h.tone], chip = $('#hlp-chip');
+function openHelp(k, data) {
+  const h = HELP[k](data || DG.d || {}); HLP = h;
+  const c = { bad: ['--red', 'i-alert'], warn: ['--amber', 'i-bang'], info: ['--indigo', 'i-info'], ok: ['--green', 'i-check'] }[h.tone], chip = $('#hlp-chip');
   chip.style.cssText = '--c:var(' + c[0] + ');--c-soft:var(' + c[0] + '-soft);--c-line:var(' + c[0] + '-line)'; $('use', chip).setAttribute('href', '#' + c[1]);
   setText($('#hlp-title'), h.title); setText($('#hlp-sub'), h.sub);
   $('#hlp-body').innerHTML = h.body; $('#hlp-body').scrollTop = 0;
@@ -1808,6 +1998,7 @@ async function emergency(k, btn) {
   try {
     if (k === 'exit') { $('#closed').classList.add('show'); await post('/api/app/force-exit').catch(() => {}); setTimeout(() => { try { window.close(); } catch (_) {} }, 400); return; }
     if (k === 'kill') { await post('/api/zapret/force-kill'); toast('Zapret принудительно остановлен', 'ok'); }
+    else if (k === 'uninstall') { await post('/api/platform/uninstall-service'); toast('Служба Zapretify удалена', 'ok'); loadDiag(); }
     else { await post('/api/zapret/reset-drivers'); toast('Сброс служб и WinDivert выполнен', 'ok'); loadDiag(); }
   } catch (err) { toast(err.message, 'err'); }
   finally { btn.classList.remove('is-pending'); btn.innerHTML = lbl; pollStatus(); }
@@ -1815,7 +2006,7 @@ async function emergency(k, btn) {
 $$('[data-em]').forEach(b => b.onclick = () => confirm2(b, () => emergency(b.dataset.em, b)));
 
 /* ================= обновления ================= */
-const UP = { avail: false, latest: '', url: '', checked: false, at: '', busy: false, err: '', as: { state: 'idle', msg: '', failed: [], changes: [], changed: false, auto: false, at: '' }, timer: null, bk: null };
+const UP = { avail: false, latest: '', url: '', dl: '', checked: false, at: '', busy: false, err: '', as: { state: 'idle', msg: '', failed: [], changes: [], changed: false, auto: false, at: '' }, timer: null, bk: null };
 const hm = () => { const d = new Date(); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const vnum = v => String(v || '').replace(/^v/, '');
 function renderUpApp() {
@@ -1874,13 +2065,18 @@ $('#up-rollback').onclick = e => confirm2(e.currentTarget, async () => {
 });
 async function checkApp(manual) {
   if (UP.busy) return; UP.busy = true; UP.err = ''; renderUpApp();
-  try { const d = await api('/api/updater/check'); UP.avail = !!d.available; UP.latest = d.latest_version || ''; UP.url = d.release_url || (UP.latest ? 'https://github.com/selfdestroyer/Zapretify/releases/tag/' + UP.latest : 'https://github.com/selfdestroyer/Zapretify/releases'); UP.checked = true; UP.at = hm(); }
+  try { const d = await api('/api/updater/check'); UP.avail = !!d.available; UP.latest = d.latest_version || ''; UP.url = d.release_url || (UP.latest ? 'https://github.com/selfdestroyer/Zapretify/releases/tag/' + UP.latest : 'https://github.com/selfdestroyer/Zapretify/releases'); UP.dl = d.download_url || ''; UP.checked = true; UP.at = hm();
+    // macOS: сразу скачиваем .dmg из релиза, если он там есть; иначе открываем страницу релиза.
+    const ob = $('#up-open'), tn = [...ob.childNodes].reverse().find(n => n.nodeType === 3); if (tn) tn.textContent = MAC() && UP.dl ? 'Скачать .dmg' : 'Открыть релиз'; }
   catch (e) { if (manual) UP.err = e.message; }
   UP.busy = false; renderUpApp(); attention();
   if (!manual && UP.avail) toast('Доступна новая версия Zapretify v' + vnum(UP.latest) + ' — откройте «Обновления»');
 }
 $('#up-check').onclick = () => checkApp(true);
-$('#up-open').onclick = () => { openExternal(UP.url); toast('Открываю страницу релиза в браузере'); };
+$('#up-open').onclick = () => {
+  if (MAC() && UP.dl) { openExternal(UP.dl); toast('Скачиваю ' + UP.latest + ': откройте .dmg и перетащите Zapretify в «Программы» с заменой'); return; }
+  openExternal(UP.url); toast('Открываю страницу релиза в браузере');
+};
 $('#btn-version-badge').onclick = () => { goScreen('updates'); if (UP.avail) openExternal(UP.url); else if (!UP.checked) checkApp(true); };
 ENTER.updates = () => { renderUpApp(); renderUpAs(); loadAssetsBackup(); };
 // Следит за синхронизацией баз: и запущенной кнопкой, и автоматической при старте приложения.
@@ -1930,7 +2126,7 @@ function attention() {
   const dg = dgProblems(), up = UP.avail ? 1 : 0, n = (dg ? 1 : 0) + up, b = $('#more-badge');
   b.hidden = !n; if (n) setText(b, n);
   const d = $('#act-d-sub'), u = $('#act-u-sub');
-  setText(d, dg ? dg + ' ' + plural(dg, 'замечание', 'замечания', 'замечаний') + ' · нужна проверка' : 'Права, WinDivert, конфликты, аварийные действия'); d.className = dg ? 'warnt' : '';
+  setText(d, dg ? dg + ' ' + plural(dg, 'замечание', 'замечания', 'замечаний') + ' · нужна проверка' : pf('Права, WinDivert, конфликты, аварийные действия', 'Служба, VPN, DNS, аварийные действия')); d.className = dg ? 'warnt' : '';
   setText(u, up ? 'Доступна v' + vnum(UP.latest) : 'Приложение, списки и стратегии'); u.className = up ? 'indt' : '';
 }
 
@@ -1939,6 +2135,7 @@ const stop = e => e.stopPropagation();
 $('#sw-z').onclick = e => { stop(e); toggle('z'); }; $('#sw-t').onclick = e => { stop(e); toggle('t'); };
 $('#z-set').onclick = e => { stop(e); openDlg('z'); }; $('#t-set').onclick = e => { stop(e); openDlg('t'); };
 $('#card-z').onclick = () => openDlg('z'); $('#card-t').onclick = () => openDlg('t');
+$('#t-err').onclick = e => { e.stopPropagation(); openTGFix(); };
 $('#t-open').onclick = e => { stop(e); if (tgLink) { openExternal(tgLink); toast('Открываю Telegram Desktop…'); } };
 $('#t-copy').onclick = async e => {
   stop(e); const b = $('#t-copy'), u = $('use', b); if (!tgLink) return;

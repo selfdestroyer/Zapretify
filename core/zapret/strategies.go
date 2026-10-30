@@ -40,12 +40,7 @@ func (r *StrategyRegistry) Load() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = "."
-	}
-	appDir := filepath.Dir(exePath)
-	filePath := filepath.Join(appDir, "strategies.json")
+	filePath := filepath.Join(config.AppDir(), "strategies.json")
 
 	data, err := os.ReadFile(filePath)
 	if err != nil {

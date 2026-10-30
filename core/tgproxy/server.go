@@ -59,6 +59,7 @@ func (s *Server) Start(host string, port int, secret string, cfproxy bool, h2 bo
 	if s.running {
 		return nil
 	}
+	atomic.StoreInt64(&cfFailStreak, 0)
 
 	if host == "" {
 		host = "127.0.0.1"
@@ -474,6 +475,7 @@ func handleMTProtoClient(client net.Conn, cfg *Config, hi *handshakeInfo, secret
 	// Check pool
 	if ws := globalPool.get(cfg, key, wsTarget, domains); ws != nil {
 		atomic.AddInt64(&stats.connectionsWS, 1)
+		atomic.StoreInt64(&cfFailStreak, 0) // Telegram is reachable another way
 		splitter, _ := newMsgSplitter(relayInit, protoInt)
 		if err := writeWSBinary(ws, relayInit); err == nil {
 			bridgeWS(label, cfg, hi.DC, hi.IsMedia, client, ws, cltDec, cltEnc, tgEnc, tgDec, splitter)
@@ -487,6 +489,7 @@ func handleMTProtoClient(client net.Conn, cfg *Config, hi *handshakeInfo, secret
 	if ws != nil {
 		clearCooldown(key)
 		atomic.AddInt64(&stats.connectionsWS, 1)
+		atomic.StoreInt64(&cfFailStreak, 0) // Telegram is reachable another way
 		splitter, _ := newMsgSplitter(relayInit, protoInt)
 		if err := writeWSBinary(ws, relayInit); err == nil {
 			bridgeWS(label, cfg, hi.DC, hi.IsMedia, client, ws, cltDec, cltEnc, tgEnc, tgDec, splitter)

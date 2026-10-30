@@ -15,9 +15,13 @@ type DiagnosticReport struct {
 	TCPTimestampsOK bool   `json:"tcp_timestamps_ok"`
 	OverallStatus   string `json:"overall_status"` // "OK", "WARNING", "ERROR"
 
-	ForeignWinws []ForeignProcess `json:"foreign_winws"` // winws.exe started from other folders
+	ForeignWinws []ForeignProcess `json:"foreign_winws"` // winws.exe started from other folders (macOS: foreign utunws)
 	VPNAdapters  []string         `json:"vpn_adapters"`  // connected VPN / TUN adapters
 	DNS          DNSCheck         `json:"dns"`
+	EncryptedDNS EncryptedDNS     `json:"encrypted_dns"` // system DNS over HTTPS/TLS
+
+	// macOS only: "" when the root service zapretifyd answers, otherwise why it does not.
+	EngineService *string `json:"engine_service,omitempty"`
 }
 
 // warn raises the overall status to WARNING unless it already is an ERROR.
@@ -41,6 +45,8 @@ func RunDiagnostics(binDir string) DiagnosticReport {
 	// The DNS check waits on the network, so it runs alongside the local checks.
 	dnsDone := make(chan DNSCheck, 1)
 	go func() { dnsDone <- CheckDNS() }()
+	encDone := make(chan EncryptedDNS, 1)
+	go func() { encDone <- CheckEncryptedDNS() }()
 
 	if runtime.GOOS == "windows" {
 		// Check WinDivert64.sys
@@ -92,15 +98,16 @@ func RunDiagnostics(binDir string) DiagnosticReport {
 			report.ForeignWinws = foreign
 			report.OverallStatus = "ERROR"
 		}
+	}
 
-		// Traffic routed into a VPN tunnel is encrypted before WinDivert sees it, so the bypass has no effect.
-		if vpn := ActiveVPNAdapters(); len(vpn) > 0 {
-			report.VPNAdapters = vpn
-			report.warn()
-		}
+	// Traffic routed into a VPN tunnel is encrypted before Zapret sees it, so the bypass has no effect on it.
+	if vpn := ActiveVPNAdapters(); len(vpn) > 0 {
+		report.VPNAdapters = vpn
+		report.warn()
 	}
 
 	report.DNS = <-dnsDone
+	report.EncryptedDNS = <-encDone
 	if len(report.DNS.Spoofed) > 0 {
 		report.warn()
 	}

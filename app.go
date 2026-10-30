@@ -40,7 +40,7 @@ type App struct {
 	shutdownOnce sync.Once
 
 	cfg      *config.Config
-	runner   *zapret.ProcessRunner
+	runner   zapret.Engine
 	registry *zapret.StrategyRegistry
 	tgServer *tgproxy.Server
 
@@ -73,18 +73,14 @@ type zapretState struct {
 func NewApp() *App {
 	return NewAppWith(
 		config.Get(),
-		zapret.GetRunner(),
+		defaultEngine(),
 		zapret.GetRegistry(),
 		tgproxy.GetServer(),
 	)
 }
 
-func NewAppWith(cfg *config.Config, runner *zapret.ProcessRunner, registry *zapret.StrategyRegistry, tgServer *tgproxy.Server) *App {
-	exePath, err := os.Executable()
-	if err != nil {
-		exePath = "."
-	}
-	appDir := filepath.Dir(exePath)
+func NewAppWith(cfg *config.Config, runner zapret.Engine, registry *zapret.StrategyRegistry, tgServer *tgproxy.Server) *App {
+	appDir := config.AppDir()
 	binDir := filepath.Join(appDir, "bin")
 	listsDir := filepath.Join(appDir, "lists")
 
@@ -313,10 +309,10 @@ func (a *App) StartZapret(strategyID string) error {
 	}
 	err := a.runner.Start(strategyID, a.binDir, a.listsDir, cfg.Zapret.GameFilterMode, cfg.Zapret.GameFilterTCP, cfg.Zapret.GameFilterUDP)
 	if err != nil {
-		logger.Log("[Zapret] Ошибка запуска процесса runner: %v", err)
+		logger.Log("[Zapret] %s: %v", pfText("Ошибка запуска процесса runner", "Ошибка запуска Zapret"), err)
 		return err
 	}
-	logger.Log("[Zapret] Фоновый процесс runner успешно запущен.")
+	logger.Log("[Zapret] %s", pfText("Фоновый процесс runner успешно запущен.", "Zapret запущен."))
 	return nil
 }
 
@@ -340,7 +336,7 @@ func isNoSuchProcess(err error) bool {
 // ForceKillZapret is the explicit "emergency reset" button: unlike the regular Stop it terminates
 // EVERY winws.exe in the system (the user asked for a full reset), so the UI asks for confirmation.
 func (a *App) ForceKillZapret() error {
-	logger.Log("[Zapret] Аварийный сброс: завершение всех процессов winws.exe...")
+	logger.Log("[Zapret] %s", pfText("Аварийный сброс: завершение всех процессов winws.exe...", "Аварийная остановка движка обхода..."))
 	var errs []error
 	if a.runner != nil {
 		if err := a.runner.Stop(); err != nil {
@@ -379,13 +375,15 @@ func (a *App) Shutdown() {
 		zapret.StopAutoBenchmark()
 
 		// 2. Остановка runner-процесса Zapret (winws.exe)
-		logger.Log("[App] Остановка фонового процесса Zapret (winws.exe)...")
+		logger.Log("[App] %s", pfText("Остановка фонового процесса Zapret (winws.exe)...", "Остановка Zapret..."))
 		if a.runner != nil {
 			_ = a.runner.Stop()
 		}
 
 		// 3. Остановка системной службы Windows zapret (если активна)
-		logger.Log("[App] Остановка системной службы Windows zapret...")
+		if runtime.GOOS == "windows" {
+			logger.Log("[App] Остановка системной службы Windows zapret...")
+		}
 		_ = zapret.StopService(a.binDir)
 
 		// 4. Остановка Telegram Proxy
@@ -474,6 +472,11 @@ func (a *App) GetTGProxyStatus() bool {
 		return false
 	}
 	return a.tgServer.IsRunning()
+}
+
+// TGProxyCFBlocked: the running Telegram proxy cannot reach its Cloudflare path (see tgproxy.CFProxyBlocked).
+func (a *App) TGProxyCFBlocked() bool {
+	return a.GetTGProxyStatus() && tgproxy.CFProxyBlocked()
 }
 
 func (a *App) GetTGProxyLink() string {
@@ -753,7 +756,9 @@ func (a *App) SetIPSetMode(mode string) error {
 }
 
 func (a *App) GetDiagnostics() platform.DiagnosticReport {
-	return platform.RunDiagnostics(a.binDir)
+	report := platform.RunDiagnostics(a.binDir)
+	addPlatformDiagnostics(&report)
+	return report
 }
 
 // Updaters
@@ -934,14 +939,19 @@ func (a *App) GenerateDebugReport() string {
 	b.WriteString("=== ZAPRETIFY ДИАГНОСТИЧЕСКИЙ ОТЧЕТ ===\n")
 	b.WriteString(fmt.Sprintf("Время: %s\n", time.Now().Format("2006-01-02 15:04:05")))
 	b.WriteString(fmt.Sprintf("ОС: %s (%s)\n", runtime.GOOS, runtime.GOARCH))
-	b.WriteString(fmt.Sprintf("Права администратора: %v\n", platform.IsAdmin()))
-
 	cfg := a.cfg.Clone()
-	b.WriteString(fmt.Sprintf("Конфигурация: strategy=%s, service_mode=%v, autostart=%v\n",
-		cfg.Zapret.Strategy, cfg.Zapret.ServiceMode, cfg.App.AutostartApp))
-
-	svcState, svcStrat, _ := zapret.GetServiceStatus()
-	b.WriteString(fmt.Sprintf("Служба zapret: состояние=%s, стратегия=%s\n", svcState, svcStrat))
+	if runtime.GOOS == "windows" {
+		b.WriteString(fmt.Sprintf("Права администратора: %v\n", platform.IsAdmin()))
+		b.WriteString(fmt.Sprintf("Конфигурация: strategy=%s, service_mode=%v, autostart=%v\n",
+			cfg.Zapret.Strategy, cfg.Zapret.ServiceMode, cfg.App.AutostartApp))
+		svcState, svcStrat, _ := zapret.GetServiceStatus()
+		b.WriteString(fmt.Sprintf("Служба zapret: состояние=%s, стратегия=%s\n", svcState, svcStrat))
+	} else {
+		b.WriteString(fmt.Sprintf("Версия Zapretify: %s\n", config.Version))
+		b.WriteString(fmt.Sprintf("Конфигурация: strategy=%s, boot_start=%v, autostart=%v\n",
+			cfg.Zapret.Strategy, cfg.Zapret.BootStart, cfg.App.AutostartApp))
+		addPlatformReport(&b)
+	}
 	procRunning := false
 	if a.runner != nil {
 		procRunning = a.runner.IsRunning()

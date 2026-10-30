@@ -228,6 +228,7 @@ func tcpFallback(client net.Conn, dst string, relayInit []byte, cltDec, cltEnc, 
 	}
 	defer r.Close()
 	atomic.AddInt64(&stats.connectionsTCP, 1)
+	atomic.StoreInt64(&cfFailStreak, 0) // Telegram is reachable another way
 
 	if err := writeTCPRelayInit(r, relayInit); err != nil {
 		return err
@@ -413,6 +414,22 @@ func cfWorkerFallback(label string, cfg *Config, dc int, isMedia bool, dst strin
 	return errNoDomains
 }
 
+// cfFailStreak counts CF proxy attempts that failed in a row. Some providers block the CF proxy
+// domain by SNI and Telegram's own addresses as well; then the proxy cannot connect at all, and the
+// UI suggests letting Zapret cover Cloudflare (IPSet «loaded») or adding the domain to a user list.
+var cfFailStreak int64
+
+const cfBlockedAfter = 4
+
+func noteCFProxyFailure() {
+	if atomic.AddInt64(&cfFailStreak, 1) == cfBlockedAfter {
+		logger.Log("[tg-ws-proxy] Провайдер, похоже, блокирует путь через Cloudflare: включите Zapret с IPSet «loaded» или добавьте %s в свой список доменов", defaultCFProxyDomain)
+	}
+}
+
+// CFProxyBlocked reports that the last CF proxy attempts all failed.
+func CFProxyBlocked() bool { return atomic.LoadInt64(&cfFailStreak) >= cfBlockedAfter }
+
 func cfproxyFallback(label string, cfg *Config, dc int, isMedia bool, client net.Conn, relayInit []byte, cltDec, cltEnc, tgEnc, tgDec cipher.Stream, splitter *msgSplitter) error {
 	mediaTag := ""
 	if isMedia {
@@ -427,16 +444,21 @@ func cfproxyFallback(label string, cfg *Config, dc int, isMedia bool, client net
 			atomic.AddInt64(&stats.wsErrors, 1)
 			cfg.markCFProxyDomainFailed(baseDomain, cfProxyFailCooldown)
 			_ = resp
+			logger.Log("[tg-ws-proxy] [%s] CF proxy %s недоступен: %v", label, domain, err)
+			noteCFProxyFailure()
 			continue
 		}
 
 		if err := writeWSBinary(ws, relayInit); err != nil {
+			logger.Log("[tg-ws-proxy] [%s] CF proxy %s: ошибка отправки: %v", label, domain, err)
+			noteCFProxyFailure()
 			_ = ws.Close()
 			cfg.markCFProxyDomainFailed(baseDomain, cfProxyFailCooldown)
 			continue
 		}
 
 		atomic.AddInt64(&stats.connectionsCF, 1)
+		atomic.StoreInt64(&cfFailStreak, 0)
 		cfg.promoteCFProxyDomain(dc, baseDomain)
 		bridgeWS(label, cfg, dc, isMedia, client, ws, cltDec, cltEnc, tgEnc, tgDec, splitter)
 		return nil

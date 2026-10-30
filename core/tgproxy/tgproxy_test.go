@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -175,5 +176,38 @@ func TestStopClosesActiveConnections(t *testing.T) {
 	_, err = conn.Read(buf)
 	if err == nil {
 		t.Errorf("expected read error/EOF after server stop, but read succeeded")
+	}
+}
+
+// The lengths in the ServerHello template must match its size, or Telegram drops the Fake TLS connection.
+func TestFakeTLSServerHelloTemplate(t *testing.T) {
+	sh := fakeTLSServerHelloTemplate
+	if rec := int(binary.BigEndian.Uint16(sh[3:5])); rec != len(sh)-5 {
+		t.Fatalf("record length %d, template body %d", rec, len(sh)-5)
+	}
+	if hs := int(sh[6])<<16 | int(sh[7])<<8 | int(sh[8]); hs != len(sh)-9 {
+		t.Fatalf("handshake length %d, template handshake body %d", hs, len(sh)-9)
+	}
+	if sh[43] != 0x20 || sh[44+32] != 0x13 || len(sh) < 89+32 {
+		t.Fatalf("session id / key share offsets do not match the code (43, 44, 89)")
+	}
+}
+
+// The UI hint appears after cfBlockedAfter CF proxy failures in a row and goes away after a success.
+func TestCFProxyBlocked(t *testing.T) {
+	atomic.StoreInt64(&cfFailStreak, 0)
+	for i := 1; i < cfBlockedAfter; i++ {
+		noteCFProxyFailure()
+	}
+	if CFProxyBlocked() {
+		t.Fatalf("blocked after %d failures", cfBlockedAfter-1)
+	}
+	noteCFProxyFailure()
+	if !CFProxyBlocked() {
+		t.Fatalf("not blocked after %d failures", cfBlockedAfter)
+	}
+	atomic.StoreInt64(&cfFailStreak, 0)
+	if CFProxyBlocked() {
+		t.Fatal("still blocked after a success")
 	}
 }
