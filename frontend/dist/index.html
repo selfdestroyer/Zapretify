@@ -115,6 +115,19 @@ button,input,select{font-family:inherit;color:inherit}
 .rowc[data-state=pending] .st{color:var(--indigo-text)}
 .sub em{font:500 11.5px var(--mono);font-style:normal;color:var(--text-2)}
 .sub em::before{content:"·";margin-right:7px;color:var(--muted);font-family:inherit}
+.cferr{background:none;border:0;padding:0;font:500 11.5px var(--mono);color:var(--text-2);cursor:pointer;text-align:left}
+.cferr::before{content:"·";margin-right:7px;color:var(--muted)}
+.cferr b{color:var(--red);font-weight:700;margin-right:5px}
+.cferr:hover span,.cferr:focus-visible span{text-decoration:underline}
+.row.tgfix{flex-direction:column;align-items:stretch;gap:8px;border:1px solid var(--divider);border-radius:12px;padding:12px;margin-top:10px}
+.tgfix,.tgfix .row-t{text-align:left}
+.tgfix .row-t{align-items:flex-start}
+.tgfix.bad{border-color:var(--red-line);background:var(--red-soft)}
+.tgfix.flash{animation:tgflash 1.2s var(--ease) 2}
+@keyframes tgflash{50%{box-shadow:0 0 0 3px var(--red-line)}}
+.tgfix p{font-size:12px;color:var(--text-2);line-height:1.45;margin:0}
+.tgfix ol{margin:0;padding-left:18px;font-size:12px;color:var(--text-2);line-height:1.45}
+.tgfix .acts{display:flex;gap:12px;align-items:center;justify-content:flex-start;flex-wrap:wrap}
 .ctl{display:flex;align-items:center;gap:6px}
 .rowc:hover .ib.gear,.ib.gear:focus-visible{opacity:1}
 .qa{display:flex;gap:2px;overflow:hidden;max-width:0;opacity:0;transition:max-width .4s var(--ease),opacity .3s}
@@ -633,7 +646,7 @@ select.inp option{background:var(--card)}
         </article>
         <article class="rowc" id="card-t" data-tone="teal" data-state="off">
           <div class="chip"><svg class="ico"><use href="#i-send"/></svg></div>
-          <div class="txt"><h3>Telegram</h3><div class="sub"><i class="dot" data-s="off"></i><span class="st">Выключен</span><em hidden></em></div></div>
+          <div class="txt"><h3>Telegram</h3><div class="sub"><i class="dot" data-s="off"></i><span class="st">Выключен</span><em hidden></em><button class="cferr" id="t-err" hidden title="Как исправить"><b>Ошибка</b><span>путь через Cloudflare заблокирован</span></button></div></div>
           <div class="ctl">
             <div class="qa">
               <button class="ib" id="t-open" title="Открыть в Telegram" aria-label="Открыть в Telegram"><svg class="ico g-send"><use href="#i-send"/></svg></button>
@@ -945,6 +958,7 @@ let VERSION = '';
 let tgLink = '';
 let svcState = '';         // RUNNING | STOPPED | NOT_INSTALLED
 let PLATFORM = '';         // windows | darwin
+let TGCF = false;          // Telegram-прокси не может пробиться через Cloudflare
 let VPNS = [];             // активные VPN/TUN-адаптеры: «Имя (описание)»
 let SVC = null;            // macOS: служба Zapretify {installed, ok, outdated, version}; на Windows null
 let svcBusy = false;
@@ -1005,7 +1019,8 @@ function render() {
     setAttr(card, 'data-state', st === 'pending' ? 'on' : st);
     setAttr($('.dot', sub), 'data-s', st === 'search' ? 'pending' : st);
     setText($('.st', sub), st === 'search' ? (BENCH.mode === 'one' ? 'Проверка стратегии…' : 'Подбор · ' + BENCH.tested + ' из ' + BENCH.total) : st === 'pending' ? (T[k] === 'on' ? 'Запуск…' : 'Остановка…') : st === 'on' ? 'Работает' : 'Выключен');
-    em.hidden = st !== 'on';
+    em.hidden = st !== 'on' || (k === 't' && TGCF);
+    if (k === 't') $('#t-err').hidden = st !== 'on' || !TGCF;
     if (k === 'z') setText(em, nm(appConfig ? appConfig.zapret.strategy : ''));
     else if (appConfig) setText(em, (appConfig.tg_proxy.host || '127.0.0.1') + ':' + appConfig.tg_proxy.port);
     setAttr(sw, 'aria-checked', st === 'pending' ? T[k] === 'on' : st === 'on'); sw.classList.toggle('is-pending', st === 'pending'); sw.disabled = st === 'search';
@@ -1024,6 +1039,10 @@ async function pollStatus() {
   BENCH.running = !!b.running; BENCH.mode = b.mode || ''; BENCH.tested = b.tested || 0; BENCH.total = b.total || 0;
   if (S.z !== 'pending') S.z = BENCH.running ? 'search' : d.zapret.is_running ? 'on' : 'off';
   if (S.t !== 'pending') S.t = d.tg_proxy ? 'on' : 'off';
+  const cfb = !!d.tg_cf_blocked;
+  if (cfb && !TGCF) toast('Telegram-прокси не может подключиться: провайдер блокирует путь через Cloudflare', 'err', () => openTGFix(), 'Как исправить');
+  const cfChanged = cfb !== TGCF; TGCF = cfb;
+  if (cfChanged && D && D.k === 't') refreshTGFix();
   render();
   if (!UP.avail) { const v = $('#btn-version-badge'); setText(v, 'v' + VERSION); }
   setText($('#up-app-sub'), 'Zapretify v' + VERSION + ' · GitHub Releases');
@@ -1431,6 +1450,7 @@ const SCHEMA = {
     fields: [{ type: 'pair', label: 'Адрес и порт прокси', hint: 'Прокси принимает подключения только с этого компьютера' },
       { type: 'secret', label: 'Секретный ключ (Fake TLS)' },
       { k: 'autostart', type: 'switch', label: 'Запускать вместе с приложением' },
+      { type: 'tgfix' },
       { type: 'dc', adv: 1, label: 'Задержка до дата-центров' }] },
   a: { title: 'Приложение', tone: 'indigo', icon: 'i-gear',
     fields: [{ k: 'autostart_app', type: 'switch', label: 'Открывать Zapretify при входе в Windows', hint: 'Через планировщик задач, без запроса UAC',
@@ -1462,6 +1482,7 @@ function rowHTML(f) {
   }
   if (f.type === 'ports') return '<div class="row col" data-ports>' + t + '<div class="pair2"><input class="inp mono" data-k="tcp" aria-label="TCP порты" placeholder="TCP 1024-65535" autocomplete="off"><input class="inp mono" data-k="udp" aria-label="UDP порты" placeholder="UDP 1024-65535" autocomplete="off"></div><div class="ferr" data-e="tcp udp" hidden></div></div>';
   if (f.type === 'secret') return '<div class="row col">' + t + '<div class="selrow"><input class="inp mono key" type="password" data-k="secret" readonly aria-label="Секретный ключ"><button class="ib" data-eye aria-label="Показать ключ" title="Показать ключ">' + ico('i-eye') + '</button><button class="btn btn-ghost" data-gen>' + ico('i-refresh') + 'Сгенерировать</button></div><div class="ferr" data-e="secret" hidden></div><div class="sdesc" id="sec-note" hidden>После смены ключа заново добавьте прокси в Telegram: кнопка «Открыть в Telegram» на главном экране.</div></div>';
+  if (f.type === 'tgfix') return '<div class="row tgfix" id="tg-fix">' + tgFixHTML() + '</div>';
   if (f.type === 'dc') return '<div class="dcw"><div class="dc-h"><span>Замер до серверов Telegram</span><button class="btn btn-ghost btn-sm" data-dcping><i class="spin"></i><span>Замерить пинг</span></button></div><div id="dc-t">' + dcHTML() + '</div></div>';
   return '<div class="row col">' + t + '<div class="pair"><input class="inp mono" value="127.0.0.1" readonly tabindex="-1" aria-label="Адрес (только этот компьютер)" title="Прокси слушает только локальный адрес"><input class="inp mono" data-k="port" inputmode="numeric" autocomplete="off" aria-label="Порт"></div><div class="ferr" data-e="port" hidden></div></div>';
 }
@@ -1491,6 +1512,7 @@ function buildDlg() {
   const db = $('#dlg-body'); db.classList.remove('onadv'); db.classList.toggle('has-adv', !!adv); setText($('#dlg-sub'), dlgSub());
   db.innerHTML = '<div class="pane main">' + main + (adv ? '<button class="navrow" id="adv-go">' + ico(sc.advIcon || 'i-gear') + '<span class="grow">' + (sc.advLabel || 'Дополнительно') + '</span>' + ico('i-chev', 'g-chev') + '</button>' : '') + '</div>'
     + (adv ? '<div class="pane adv"><button class="link back" id="adv-back">' + ico('i-left', 'g-left') + 'Назад</button>' + adv + '</div>' : '');
+  refreshTGFix();
   syncControls();
 }
 function syncControls() {
@@ -1510,6 +1532,42 @@ function syncControls() {
   $('#dlg-reset').style.visibility = same(D.vals, DEFAULTS[D.k]()) ? 'hidden' : 'visible';
 }
 function clearErr() { const f = $('#dlg-f'); if (f.classList.contains('has-err')) { f.classList.remove('has-err'); setText($('#save-lbl'), 'Сохранить'); } }
+// Блок «Если Telegram не подключается» в настройках прокси: провайдер может блокировать путь через
+// Cloudflare (kws*.pclead.co.uk) и прямые адреса Telegram — тогда помогает Zapret с IPSet «loaded».
+function tgFixHTML() {
+  const ip = appConfig.zapret.ipset_mode || 'none', z = S.z === 'on';
+  return '<div class="row-t"><b>' + (TGCF ? 'Ошибка: провайдер блокирует Telegram-прокси' : 'Если Telegram не подключается') + '</b>' +
+    '<span>' + (TGCF ? 'Путь через Cloudflare и прямые адреса Telegram сейчас недоступны.' : 'Некоторые провайдеры блокируют путь прокси через Cloudflare и прямые адреса Telegram.') + '</span></div>' +
+    '<p>Решение — пусть Zapret обходит блокировку и для прокси:</p><ol>' +
+    '<li><b>IPSet «loaded»</b> — Zapret начнёт обрабатывать подсети Cloudflare из базы Flowseal' + (ip === 'none' ? '' : ' (сейчас IPSet: ' + esc(ip) + ')') + '.</li>' +
+    '<li>Или добавьте домен <b>pclead.co.uk</b> в «Мои сайты» — Zapret будет обходить только его.</li></ol>' +
+    (z ? '' : '<p><b>Zapret сейчас выключен</b> — включите его, иначе ни один способ не сработает.</p>') +
+    '<div class="acts">' + (ip === 'none' ? '<button class="btn btn-primary btn-sm" data-tgfix><i class="spin"></i><span>Включить IPSet «loaded»</span></button>' : '') +
+    '<button class="btn btn-ghost btn-sm" data-tgdomain><i class="spin"></i><span>Добавить pclead.co.uk в «Мои сайты»</span></button>' +
+    '<button class="link" data-tghelp>Подробнее</button></div>';
+}
+function refreshTGFix() { const b = $('#tg-fix'); if (!b) return; b.innerHTML = tgFixHTML(); b.classList.toggle('bad', TGCF); }
+async function enableIPSetLoaded() {
+  const old = CFG.z(), msg = await SAVE.z(Object.assign({}, old, { ipset: 'loaded' }), old);
+  toast(S.z === 'on' ? msg : 'IPSet «loaded» включён — теперь включите Zapret', 'ok');
+}
+// Добавляет домен Telegram-прокси в «Мои сайты» и перезапускает Zapret, чтобы список применился.
+const TG_CF_DOMAIN = 'pclead.co.uk', USER_LIST = 'list-general-user.txt';
+async function addTGDomain() {
+  const d = await api('/api/lists?file=' + USER_LIST), cur = d.content || '';
+  if (cur.split(/\r?\n/).some(l => l.trim().toLowerCase() === TG_CF_DOMAIN)) { toast(TG_CF_DOMAIN + ' уже есть в «Моих сайтах»', 'info'); return; }
+  const r = await post('/api/lists?file=' + USER_LIST, { content: cur.replace(/\s*$/, '\n') + TG_CF_DOMAIN + '\n' });
+  if (LS[USER_LIST]) { LS[USER_LIST].saved = LS[USER_LIST].draft = r.content != null ? r.content : LS[USER_LIST].draft; }
+  if (S.z === 'on') {
+    await restarting('z', async () => { await post('/api/zapret/stop'); await post('/api/zapret/start?strategy=' + encodeURIComponent(appConfig.zapret.strategy)); });
+    toast(TG_CF_DOMAIN + ' добавлен в «Мои сайты» · Zapret перезапущен', 'ok');
+  } else toast(TG_CF_DOMAIN + ' добавлен в «Мои сайты» — теперь включите Zapret', 'ok');
+}
+function openTGFix() {
+  if (!D || D.k !== 't') openDlg('t');
+  refreshTGFix();
+  setTimeout(() => { const b = $('#tg-fix'); if (!b) return; b.scrollIntoView({ behavior: 'smooth', block: 'center' }); b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }, 180);
+}
 function openDlg(k) {
   if (!appConfig) return;
   if (k === 'z' && S.z === 'search') { openSearch(); return; }
@@ -1529,6 +1587,11 @@ body.addEventListener('click', e => {
   const gen = e.target.closest('[data-gen]');
   if (gen && !D.saving) { const by = new Uint8Array(16); crypto.getRandomValues(by); D.vals.secret = Array.from(by, x => x.toString(16).padStart(2, '0')).join(''); gen.classList.remove('spun'); void gen.offsetWidth; gen.classList.add('spun'); clearErr(); syncControls(); toast('Новый ключ сгенерирован'); }
   if (e.target.closest('[data-dcping]')) pingDCs();
+  if (e.target.closest('[data-tghelp]')) openHelp('tgcf');
+  const td = e.target.closest('[data-tgdomain]');
+  if (td && !td.classList.contains('is-pending')) { td.classList.add('is-pending'); addTGDomain().catch(err => toast(err.message, 'err')).finally(() => td.classList.remove('is-pending')); }
+  const fx = e.target.closest('[data-tgfix]');
+  if (fx && !fx.classList.contains('is-pending')) { fx.classList.add('is-pending'); enableIPSetLoaded().catch(err => toast(err.message, 'err')).finally(() => refreshTGFix()); }
   if (e.target.closest('[data-check]') && !D.saving) { const id = D.vals.strategy; closeDlg(false); setTimeout(() => checkOne(id), 250); }
 });
 body.addEventListener('input', e => { const k = e.target.dataset.k; if (D && k && !D.saving) { D.vals[k] = e.target.value; clearErr(); syncControls(); } });
@@ -1879,6 +1942,17 @@ const HELP = {
           : '<h4>Как включить</h4>' + dohSteps()),
       act: ['Открыть настройки сети', async () => { await post('/api/platform/network-settings'); }] };
   },
+  tgcf: () => {
+    const z = S.z === 'on', ip = appConfig.zapret.ipset_mode || 'none';
+    return { tone: 'warn', title: 'Провайдер блокирует Telegram-прокси', sub: 'Путь через Cloudflare и прямые адреса Telegram недоступны',
+      body: '<h4>Что происходит</h4><p>Telegram-прокси подключается к серверам Telegram через Cloudflare (<b>kws*.pclead.co.uk</b>), а если не выходит — напрямую. Сейчас провайдер обрывает оба пути, поэтому Telegram не подключается.</p>' +
+        '<h4>Как исправить</h4><p>Пусть Zapret обходит блокировку и для прокси. Для этого нужен один из способов:</p>' +
+        '<ol><li><b>IPSet «loaded»</b> — Zapret начнёт обрабатывать подсети Cloudflare из базы Flowseal. Кнопка ниже включит его' + (z ? ' и перезапустит Zapret' : '') + '. Если какой-то сайт на Cloudflare после этого начнёт открываться хуже, верните «Выключен (none)» в настройках Zapret.</li>' +
+        '<li>Или добавьте домен <b>pclead.co.uk</b> в «Списки доменов» → «Мои сайты» — Zapret будет обходить только его.</li></ol>' +
+        (z ? '' : '<p><b>Zapret сейчас выключен</b> — включите его, иначе ни один способ не сработает.</p>') +
+        '<div class="kv"><div>Сейчас: IPSet ' + esc(ip) + ' · Zapret ' + (z ? 'включён' : 'выключен') + '</div></div>',
+      act: ip !== 'none' ? null : ['Включить IPSet «loaded»', async () => { await enableIPSetLoaded(); closeHelp(); refreshTGFix(); }] };
+  },
   dns: d => {
     const sp = (d.dns || {}).spoofed || [];
     return { tone: 'warn', title: 'Провайдер подменяет DNS', sub: 'Сайты могут не открываться ни с одной стратегией',
@@ -2061,6 +2135,7 @@ const stop = e => e.stopPropagation();
 $('#sw-z').onclick = e => { stop(e); toggle('z'); }; $('#sw-t').onclick = e => { stop(e); toggle('t'); };
 $('#z-set').onclick = e => { stop(e); openDlg('z'); }; $('#t-set').onclick = e => { stop(e); openDlg('t'); };
 $('#card-z').onclick = () => openDlg('z'); $('#card-t').onclick = () => openDlg('t');
+$('#t-err').onclick = e => { e.stopPropagation(); openTGFix(); };
 $('#t-open').onclick = e => { stop(e); if (tgLink) { openExternal(tgLink); toast('Открываю Telegram Desktop…'); } };
 $('#t-copy').onclick = async e => {
   stop(e); const b = $('#t-copy'), u = $('use', b); if (!tgLink) return;

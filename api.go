@@ -144,14 +144,15 @@ func registerAPIRoutes(mux *http.ServeMux, app *App) {
 			return
 		}
 		status := map[string]interface{}{
-			"version":   config.Version,
-			"zapret":    app.GetZapretStatus(),
-			"tg_proxy":  app.GetTGProxyStatus(),
-			"tg_link":   app.GetTGProxyLink(),
-			"benchmark": app.GetBenchmarkActivity(),
-			"platform":  runtime.GOOS,
-			"vpn":       activeVPN(),
-			"service":   macServiceState(),
+			"version":       config.Version,
+			"zapret":        app.GetZapretStatus(),
+			"tg_proxy":      app.GetTGProxyStatus(),
+			"tg_link":       app.GetTGProxyLink(),
+			"tg_cf_blocked": app.TGProxyCFBlocked(),
+			"benchmark":     app.GetBenchmarkActivity(),
+			"platform":      runtime.GOOS,
+			"vpn":           activeVPN(),
+			"service":       macServiceState(),
 		}
 		writeJSON(w, status)
 	})

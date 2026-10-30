@@ -52,6 +52,7 @@ type Response struct {
 	Iface    string   `json:"iface,omitempty"`
 	LastExit string   `json:"last_exit,omitempty"` // why the engine stopped on its own, if it did
 	Note     string   `json:"note,omitempty"`      // warning about the running engine (VPN active, …)
+	IPv6     string   `json:"ipv6,omitempty"`      // how the running engine handles IPv6
 	Boot     bool     `json:"boot"`                // the engine starts at system boot
 	Log      []string `json:"log,omitempty"`       // last engine output lines
 }

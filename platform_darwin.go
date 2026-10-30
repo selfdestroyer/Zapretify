@@ -103,6 +103,59 @@ func addPlatformDiagnostics(r *platform.DiagnosticReport) {
 	}
 }
 
+// addPlatformReport adds the macOS part of «Скопировать отчёт для разработчика»: the system, the
+// root service and the engine's own output, the network (VPN, IPv6) and encrypted DNS.
+func addPlatformReport(b *strings.Builder) {
+	if v, err := exec.Command("sw_vers", "-productVersion").Output(); err == nil {
+		fmt.Fprintf(b, "macOS: %s\n", strings.TrimSpace(string(v)))
+	}
+	resp, err := macdaemon.Call(macdaemon.Request{Cmd: macdaemon.CmdStatus}, 3*time.Second)
+	if err != nil {
+		fmt.Fprintf(b, "Служба Zapretify: недоступна (%v)\n", err)
+	} else {
+		fmt.Fprintf(b, "Служба Zapretify: версия=%s, движок=%v, стратегия=%s, PID=%d, интерфейс=%s, при загрузке=%v\n",
+			resp.Version, resp.Running, resp.Strategy, resp.PID, resp.Iface, resp.Boot)
+		if resp.IPv6 != "" {
+			fmt.Fprintf(b, "IPv6 в службе: %s\n", resp.IPv6)
+		}
+		if resp.Note != "" {
+			fmt.Fprintf(b, "Примечание службы: %s\n", resp.Note)
+		}
+		if resp.LastExit != "" {
+			fmt.Fprintf(b, "Последняя остановка движка: %s\n", resp.LastExit)
+		}
+	}
+	vpn := platform.ActiveVPNAdapters()
+	if len(vpn) == 0 {
+		vpn = []string{"нет"}
+	}
+	fmt.Fprintf(b, "VPN: %s\n", strings.Join(vpn, "; "))
+	ipv6 := "нет"
+	if out, err := exec.Command("/sbin/route", "-n", "get", "-inet6", "default").Output(); err == nil {
+		for _, l := range strings.Split(string(out), "\n") {
+			if k, v, ok := strings.Cut(strings.TrimSpace(l), ":"); ok && k == "interface" {
+				ipv6 = "есть (" + strings.TrimSpace(v) + ")"
+			}
+		}
+	}
+	fmt.Fprintf(b, "IPv6 в сети: %s\n", ipv6)
+	dns := platform.CheckEncryptedDNS()
+	switch {
+	case !dns.Checked:
+		b.WriteString("Зашифрованный DNS: не удалось проверить\n")
+	case dns.Enabled:
+		fmt.Fprintf(b, "Зашифрованный DNS: включён (%s)\n", dns.Via)
+	default:
+		b.WriteString("Зашифрованный DNS: выключен\n")
+	}
+	if err == nil && len(resp.Log) > 0 {
+		b.WriteString("\n--- Вывод движка (служба Zapretify) ---\n")
+		for _, l := range resp.Log {
+			b.WriteString(l + "\n")
+		}
+	}
+}
+
 // serviceState describes the root service for the UI: the app cannot bypass anything without it.
 type serviceState struct {
 	Installed bool   `json:"installed"`

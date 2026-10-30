@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 
 	"zapretify/core/platform"
 	"zapretify/core/zapret"
@@ -17,6 +18,9 @@ func prepareAppDir(string) {}
 
 // addPlatformDiagnostics: all Windows checks live in platform.RunDiagnostics.
 func addPlatformDiagnostics(*platform.DiagnosticReport) {}
+
+// addPlatformReport: the Windows part of the developer report lives in GenerateDebugReport.
+func addPlatformReport(*strings.Builder) {}
 
 // macServiceState: the root service exists only on macOS.
 func macServiceState() any { return nil }

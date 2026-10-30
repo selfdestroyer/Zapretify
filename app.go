@@ -474,6 +474,11 @@ func (a *App) GetTGProxyStatus() bool {
 	return a.tgServer.IsRunning()
 }
 
+// TGProxyCFBlocked: the running Telegram proxy cannot reach its Cloudflare path (see tgproxy.CFProxyBlocked).
+func (a *App) TGProxyCFBlocked() bool {
+	return a.GetTGProxyStatus() && tgproxy.CFProxyBlocked()
+}
+
 func (a *App) GetTGProxyLink() string {
 	if a.tgServer == nil {
 		return ""
@@ -934,14 +939,19 @@ func (a *App) GenerateDebugReport() string {
 	b.WriteString("=== ZAPRETIFY ДИАГНОСТИЧЕСКИЙ ОТЧЕТ ===\n")
 	b.WriteString(fmt.Sprintf("Время: %s\n", time.Now().Format("2006-01-02 15:04:05")))
 	b.WriteString(fmt.Sprintf("ОС: %s (%s)\n", runtime.GOOS, runtime.GOARCH))
-	b.WriteString(fmt.Sprintf("Права администратора: %v\n", platform.IsAdmin()))
-
 	cfg := a.cfg.Clone()
-	b.WriteString(fmt.Sprintf("Конфигурация: strategy=%s, service_mode=%v, autostart=%v\n",
-		cfg.Zapret.Strategy, cfg.Zapret.ServiceMode, cfg.App.AutostartApp))
-
-	svcState, svcStrat, _ := zapret.GetServiceStatus()
-	b.WriteString(fmt.Sprintf("Служба zapret: состояние=%s, стратегия=%s\n", svcState, svcStrat))
+	if runtime.GOOS == "windows" {
+		b.WriteString(fmt.Sprintf("Права администратора: %v\n", platform.IsAdmin()))
+		b.WriteString(fmt.Sprintf("Конфигурация: strategy=%s, service_mode=%v, autostart=%v\n",
+			cfg.Zapret.Strategy, cfg.Zapret.ServiceMode, cfg.App.AutostartApp))
+		svcState, svcStrat, _ := zapret.GetServiceStatus()
+		b.WriteString(fmt.Sprintf("Служба zapret: состояние=%s, стратегия=%s\n", svcState, svcStrat))
+	} else {
+		b.WriteString(fmt.Sprintf("Версия Zapretify: %s\n", config.Version))
+		b.WriteString(fmt.Sprintf("Конфигурация: strategy=%s, boot_start=%v, autostart=%v\n",
+			cfg.Zapret.Strategy, cfg.Zapret.BootStart, cfg.App.AutostartApp))
+		addPlatformReport(&b)
+	}
 	procRunning := false
 	if a.runner != nil {
 		procRunning = a.runner.IsRunning()

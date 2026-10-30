@@ -21,12 +21,14 @@ import (
 // Network setup of the engine. Unit, addresses and anchor differ from Flowseal's ZapretMac
 // (utun50, 10.77.0.x, com.apple/zapret-macos) so the two programs never touch each other's state.
 const (
-	utunUnit  = 61 // utunws creates utun<unit-1>
-	utunName  = "utun60"
-	utunLocal = "10.78.0.1"
-	utunPeer  = "10.78.0.2"
-	pfAnchor  = "com.apple/zapretify" // pf.conf of macOS loads anchors under com.apple/*
-	confPath  = "/var/run/zapretify.conf"
+	utunUnit   = 61 // utunws creates utun<unit-1>
+	utunName   = "utun60"
+	utunLocal  = "10.78.0.1"
+	utunPeer   = "10.78.0.2"
+	utunLocal6 = "fd7a:7a7a:7a7a::1" // unique local IPv6 pair for the IPv6 route-to
+	utunPeer6  = "fd7a:7a7a:7a7a::2"
+	pfAnchor   = "com.apple/zapretify" // pf.conf of macOS loads anchors under com.apple/*
+	confPath   = "/var/run/zapretify.conf"
 
 	engineStartTimeout = 10 * time.Second
 	engineGrace        = 700 * time.Millisecond
@@ -45,6 +47,7 @@ type engineProc struct {
 	iface    string
 	gateway  string
 	pfToken  string
+	ipv6     string // how IPv6 is handled, for the status
 }
 
 // enginePath is the utunws binary installed with the daemon.
@@ -83,7 +86,7 @@ func (s *Server) startEngine(strategyID, home string, uid int) error {
 	if err := ValidateEngineArgs(cfg.Args, bases.ListsDir, bases.BinDir); err != nil {
 		return err
 	}
-	if _, err := PFRules("lo0", utunName, utunPeer, cfg.TCPPorts, cfg.UDPPorts); err != nil {
+	if _, err := PFRules("lo0", utunName, utunPeer, utunPeer6, cfg.TCPPorts, cfg.UDPPorts); err != nil {
 		return err
 	}
 	if err := os.WriteFile(confPath, []byte(zapret.WriteUtunwsConfig(cfg.Args)), 0600); err != nil {
@@ -99,21 +102,18 @@ func (s *Server) launch(strategyID string) error {
 	if err != nil {
 		return err
 	}
-	rules, err := PFRules(iface, utunName, utunPeer, s.tcpPorts, s.udpPorts)
-	if err != nil {
-		return err
-	}
 	gwMAC, err := neighborMAC(gateway)
 	if err != nil {
 		return err
 	}
+	gw6MAC := gateway6MAC() // empty when the network has no IPv6
 
 	cmd := exec.Command(enginePath(s.RootDir), "@"+confPath)
 	cmd.Env = []string{
 		"PATH=/usr/bin:/bin:/usr/sbin:/sbin",
 		"ZAPRET_IFACE=" + iface,
 		"ZAPRET_GATEWAY_MAC=" + gwMAC,
-		"ZAPRET_GATEWAY6_MAC=" + gateway6MAC(),
+		"ZAPRET_GATEWAY6_MAC=" + gw6MAC,
 		"ZAPRET_UTUN_UNIT=" + strconv.Itoa(utunUnit),
 	}
 	s.log.reset()
@@ -141,6 +141,25 @@ func (s *Server) launch(strategyID string) error {
 		return fail(err)
 	}
 	if err := run("/sbin/ifconfig", utunName, utunLocal, utunPeer, "netmask", "255.255.255.255", "up"); err != nil {
+		return fail(err)
+	}
+	// IPv6 goes through the engine as well when the network has it; if the address cannot be set,
+	// the bypass still works for IPv4 and the status says why IPv6 is left out.
+	peer6 := ""
+	switch {
+	case gw6MAC == "":
+		p.ipv6 = "в сети нет, перехватывается только IPv4"
+	default:
+		if err := run("/sbin/ifconfig", utunName, "inet6", utunLocal6, utunPeer6, "prefixlen", "128"); err != nil {
+			p.ipv6 = fmt.Sprintf("не перенаправляется: %v", err)
+		} else {
+			peer6 = utunPeer6
+			p.ipv6 = "перехватывается через движок"
+		}
+	}
+	s.logf("IPv6: %s", p.ipv6)
+	rules, err := PFRules(iface, utunName, utunPeer, peer6, s.tcpPorts, s.udpPorts)
+	if err != nil {
 		return fail(err)
 	}
 	if p.pfToken, err = pfEnable(); err != nil {

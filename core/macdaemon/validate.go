@@ -97,8 +97,14 @@ func insideDirs(p string, dirs []string) bool {
 // PFRules builds the pf anchor that sends the strategy's ports to the engine interface.
 // Only traffic leaving through iface (the physical interface, not a VPN tunnel) and only traffic of
 // regular users is routed (user > root): the engine itself and system daemons are not.
-func PFRules(iface, utun, peer string, tcpPorts, udpPorts []string) (string, error) {
+// With peer6 set, IPv6 is routed too: sites like YouTube are reached over IPv6 where the provider
+// has it, and that traffic would otherwise pass the engine by.
+func PFRules(iface, utun, peer, peer6 string, tcpPorts, udpPorts []string) (string, error) {
 	var b strings.Builder
+	families := []struct{ af, peer string }{{"inet", peer}}
+	if peer6 != "" {
+		families = append(families, struct{ af, peer string }{"inet6", peer6})
+	}
 	for _, r := range []struct {
 		proto string
 		ports []string
@@ -110,8 +116,10 @@ func PFRules(iface, utun, peer string, tcpPorts, udpPorts []string) (string, err
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "pass out quick on %s route-to (%s %s) inet proto %s from any to any port {%s} user { >root } no state\n",
-			iface, utun, peer, r.proto, list)
+		for _, f := range families {
+			fmt.Fprintf(&b, "pass out quick on %s route-to (%s %s) %s proto %s from any to any port {%s} user { >root } no state\n",
+				iface, utun, f.peer, f.af, r.proto, list)
+		}
 	}
 	if b.Len() == 0 {
 		return "", fmt.Errorf("в стратегии нет портов для перехвата")

@@ -156,6 +156,7 @@ func (s *Server) fillStatus(r *Response) {
 		r.Strategy = s.proc.strategy
 		r.PID = s.proc.cmd.Process.Pid
 		r.Iface = s.proc.iface
+		r.IPv6 = s.proc.ipv6
 	}
 	r.LastExit = s.lastExit
 	r.Note = s.note

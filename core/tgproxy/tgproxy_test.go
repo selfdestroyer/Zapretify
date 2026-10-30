@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -189,5 +190,24 @@ func TestFakeTLSServerHelloTemplate(t *testing.T) {
 	}
 	if sh[43] != 0x20 || sh[44+32] != 0x13 || len(sh) < 89+32 {
 		t.Fatalf("session id / key share offsets do not match the code (43, 44, 89)")
+	}
+}
+
+// The UI hint appears after cfBlockedAfter CF proxy failures in a row and goes away after a success.
+func TestCFProxyBlocked(t *testing.T) {
+	atomic.StoreInt64(&cfFailStreak, 0)
+	for i := 1; i < cfBlockedAfter; i++ {
+		noteCFProxyFailure()
+	}
+	if CFProxyBlocked() {
+		t.Fatalf("blocked after %d failures", cfBlockedAfter-1)
+	}
+	noteCFProxyFailure()
+	if !CFProxyBlocked() {
+		t.Fatalf("not blocked after %d failures", cfBlockedAfter)
+	}
+	atomic.StoreInt64(&cfFailStreak, 0)
+	if CFProxyBlocked() {
+		t.Fatal("still blocked after a success")
 	}
 }
